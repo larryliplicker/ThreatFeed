@@ -1,6 +1,7 @@
 import { CSSProperties, Ref, useLayoutEffect, useRef } from 'react';
 import { TvTileSize } from '../../types';
 import { NpmTileInfo, TvTile, TvTone } from '../../services/tv/tiles';
+import { swapProps } from './useLivingWall';
 import TvQr from './TvQr';
 import { useTvSettings } from './useTvSettings';
 import { NEUTRAL_COLOR, TV_SEVERITY } from './dashParts';
@@ -55,12 +56,14 @@ interface Props {
   /** Breaking news in its first round: a red NEW badge by the source line */
   isNew?: boolean;
   now: number;
+  /** Swaps this tile now (click, Enter or Space) */
+  onSwap?: () => void;
   style?: CSSProperties;
 }
 
 const areaClass = (area: number) => (area >= 4 ? 4 : area >= 2 ? 2 : 1);
 
-export default function TvTileCard({ tile, size, area, leaving, isNew, now, style }: Props) {
+export default function TvTileCard({ tile, size, area, leaving, isNew, now, onSwap, style }: Props) {
   const tileRef = useRef<HTMLElement>(null);
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const summaryRef = useRef<HTMLParagraphElement>(null);
@@ -124,6 +127,7 @@ export default function TvTileCard({ tile, size, area, leaving, isNew, now, styl
       data-area={areaClass(area)}
       data-leaving={leaving ? '1' : undefined}
       style={style}
+      {...(onSwap ? swapProps(onSwap, tile.headline) : {})}
     >
       <span className="tv-tile-bar" style={{ background: tile.npm ? chipFill(tile.npm.severity) : TONE_COLOR[tile.tone] }} />
       <div className="tv-tile-meta">
@@ -142,7 +146,7 @@ export default function TvTileCard({ tile, size, area, leaving, isNew, now, styl
       )}
       {tile.npm && <NpmLines npm={tile.npm} innerRef={npmRef} />}
       {showQr && (
-        <div ref={qrRef} className="tv-qr-corner"><TvQr url={tile.url!} /></div>
+        <div ref={qrRef} className="tv-qr-corner" onClick={e => e.stopPropagation()}><TvQr url={tile.url!} /></div>
       )}
     </article>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { KeyboardEvent, MouseEvent, useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from '../Common/SidePanel';
 import { TvTileSize } from '../../types';
 import { EngineItem, Rng, Slot, WallState, Swap, applySwap, initWall, nextDue, pageLabel, planSwap, prioritize as prioritizeItem, refill, shiftDue } from '../../services/tv/tileEngine';
@@ -34,6 +34,21 @@ export function pinSlots<T>(pins: Map<string, T>, slots: Slot[], content: Map<st
     if (v !== undefined) next.set(t.key, v);
   }
   return next;
+}
+
+/** Props that make a tile or panel a button that swaps its slot: click, Enter or Space (keys from a control inside it are left alone) */
+export function swapProps(swap: () => void, label: string) {
+  return {
+    role: 'button' as const,
+    tabIndex: 0,
+    'aria-label': label,
+    onClick: (e: MouseEvent) => { if (!e.defaultPrevented) swap(); },
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      swap();
+    },
+  };
 }
 
 interface Options {
@@ -72,6 +87,7 @@ export function useLivingWall(build: (full: boolean, live: ReadonlySet<string>) 
   const callBuild = (full: boolean) => buildRef.current(full, liveIds());
   const [leaving, setLeaving] = useState<Set<string>>(() => new Set());
   const [epoch, setEpoch] = useState(0); // bumped when the wall is replaced, so the timer starts over
+  const swapRef = useRef<(key: string) => void>(() => {});
   const settled = useRef(false); // true once a swap has completed
   const prev = useRef({ size, intervalMs, signature: opts.signature });
 
@@ -146,11 +162,12 @@ export function useLivingWall(build: (full: boolean, live: ReadonlySet<string>) 
       schedule();
       window.dispatchEvent(new Event(TV_QUIET_EVENT));
     };
-    const fire = () => {
+    /** Swaps the next due slot, or `key` when given (a manual swap, which takes the same path) */
+    const fire = (key?: string) => {
       timer = undefined;
       if (gen !== generation.current) return;
       let w = wallRef.current;
-      const slot = nextDue(w);
+      const slot = key === undefined ? nextDue(w) : w.slots.find(t => t.key === key);
       if (!slot) return;
       if (w.cursor >= w.queue.length) {
         w = refill(w, callBuild(false), now(), intervalMs, rng);
@@ -167,7 +184,7 @@ export function useLivingWall(build: (full: boolean, live: ReadonlySet<string>) 
       timer = undefined;
       if (document.hidden) return; // resumed by visibilitychange
       const slot = nextDue(wallRef.current);
-      if (slot) timer = setTimeout(fire, Math.max(0, slot.dueAt - now()));
+      if (slot) timer = setTimeout(() => fire(), Math.max(0, slot.dueAt - now()));
     };
     const onVisibility = () => {
       if (document.hidden) {
@@ -192,7 +209,15 @@ export function useLivingWall(build: (full: boolean, live: ReadonlySet<string>) 
     if (document.hidden) hiddenAt = now();
     schedule();
     document.addEventListener('visibilitychange', onVisibility);
+    // A swap in its out phase blocks another; the swapped-in slot gets a fresh due time, which restarts its timer
+    swapRef.current = key => {
+      if (pending) return;
+      if (timer !== undefined) clearTimeout(timer);
+      fire(key);
+      if (!pending) schedule(); // nothing to swap (unknown slot): keep the timers going
+    };
     return () => {
+      swapRef.current = () => {};
       if (timer !== undefined) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
@@ -209,5 +234,8 @@ export function useLivingWall(build: (full: boolean, live: ReadonlySet<string>) 
   /** Whether data changes are news to this wall: once it has settled (a swap landed) and is tiled; before that they are part of the starting build */
   const acceptsNews = useRef(() => settled.current && wallRef.current.slots.length > 0 && !wallRef.current.fallback).current;
 
-  return { slots: wall.slots, size: wall.size, leaving, label: pageLabel(wall), fallback: wall.fallback, prioritize, acceptsNews };
+  /** Swaps one slot now, with the normal transition, and restarts its timer. Never flags breaking; ignored during a swap. */
+  const swapNow = useRef((slotKey: string) => swapRef.current(slotKey)).current;
+
+  return { swapNow, slots: wall.slots, size: wall.size, leaving, label: pageLabel(wall), fallback: wall.fallback, prioritize, acceptsNews };
 }

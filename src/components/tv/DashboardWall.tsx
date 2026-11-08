@@ -3,7 +3,7 @@ import { useTvSettings } from './useTvSettings';
 import { GRIDS, Shape } from '../../services/tv/tileEngine';
 import { useReducedMotion } from '../Common/SidePanel';
 import TvFooter from './TvFooter';
-import { keepLive, pinSlots, useLivingWall } from './useLivingWall';
+import { keepLive, pinSlots, swapProps, useLivingWall } from './useLivingWall';
 import { CellDelayContext, cellDelayMs, SPEED_FACTOR, wallOutMs, wallTransition } from './wallMotion';
 
 /** One dashboard panel in the wall's pool; `render` mounts it afresh on every arrival (so its data is computed then) */
@@ -26,7 +26,7 @@ export default function DashboardWall({ build, signature }: { build: () => Panel
   const pins = useRef(new Map<string, PanelDef>());
 
   const size = tv.size;
-  const { slots, size: gridSize, leaving, label } = useLivingWall(
+  const { slots, size: gridSize, leaving, label, swapNow } = useLivingWall(
     (_full, live) => {
       const panels = build();
       // `live` is the wall's state now, which can be ahead of the last render
@@ -65,6 +65,7 @@ export default function DashboardWall({ build, signature }: { build: () => Panel
             data-size={gridSize}
             data-panel={s.itemId}
             data-leaving={leaving.has(s.key) ? '1' : undefined}
+            {...swapProps(() => swapNow(s.key), 'Show another panel')}
             style={{ gridColumn: `${s.col + 1} / span ${s.w}`, gridRow: `${s.row + 1} / span ${s.h}`, ['--i' as string]: s.order } as CSSProperties}
           >
             <CellDelayContext.Provider value={cellDelayMs(transition, s.order, tv.speed)}>

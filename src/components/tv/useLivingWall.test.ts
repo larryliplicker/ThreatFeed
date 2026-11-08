@@ -103,6 +103,57 @@ describe('useLivingWall', () => {
     expect(result.slots.some(s => s.itemId === 'hot')).toBe(true);
   });
 
+  describe('swapNow', () => {
+    it('replaces only that slot', () => {
+      mount(() => items(30));
+      const before = result.slots;
+      const key = before[2].key;
+      act(() => result.swapNow(key));
+      expect(result.leaving.has(key)).toBe(true);
+      const going = new Set(result.leaving);
+      advance(450);
+      expect(result.leaving.size).toBe(0);
+      const after = result.slots.map(s => s.key);
+      going.forEach(k => expect(after).not.toContain(k));
+      // every slot that was not part of the swap is still there, unchanged
+      before.filter(s => !going.has(s.key)).forEach(s => expect(result.slots).toContainEqual(s));
+    });
+
+    it('resets the slot timer', () => {
+      mount(() => items(30));
+      advance(30000);
+      const old = new Set(result.slots.map(s => s.key));
+      act(() => result.swapNow(result.slots[2].key));
+      advance(450);
+      const t = Date.now();
+      const arrived = result.slots.filter(s => !old.has(s.key));
+      expect(arrived.length).toBeGreaterThan(0);
+      // a full interval (minus the stagger allowance) from the swap, not from the earlier start
+      arrived.forEach(s => expect(s.dueAt).toBeGreaterThan(t + 30000));
+    });
+
+    it('during a transition is ignored', () => {
+      mount(() => items(30));
+      const key = result.slots[2].key;
+      act(() => result.swapNow(key));
+      const going = [...result.leaving];
+      const other = result.slots.find(s => !going.includes(s.key))!.key;
+      act(() => result.swapNow(other));
+      act(() => result.swapNow(key));
+      expect([...result.leaving]).toEqual(going);
+      advance(450);
+      expect(result.slots.some(s => s.key === other)).toBe(true);
+    });
+
+    it('does nothing for an unknown slot and keeps the timer running', () => {
+      mount(() => items(30));
+      act(() => result.swapNow('nope'));
+      expect(result.leaving.size).toBe(0);
+      advance(60000);
+      expect(result.leaving.size).toBeGreaterThan(0);
+    });
+  });
+
   it('accepts news only once the wall has settled', () => {
     mount(() => items(30));
     expect(result.acceptsNews()).toBe(false);

@@ -859,6 +859,14 @@ button.tag-chip {
 .tv-wall[data-transition='reduced'] .tv-cell { animation: tv-fade-in 200ms linear both; }
 .tv-wall[data-transition='reduced'] .tv-cell[data-leaving] { animation: tv-fade-out 200ms linear both; }
 
+/* Tiles and panels swap on click, Enter or Space: pointer cursor, and the keyboard focus ring of the entity links */
+.tv-tile[role='button'], .tv-slot[role='button'] { cursor: pointer; }
+.tv-tile[role='button']:focus-visible, .tv-slot[role='button']:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 55%, transparent);
+  outline-offset: -2px;
+}
+.tv-qr-corner { cursor: default; }
+
 /* Dashboard mode: panels on the same living wall as TV mode (.tv-wall tracks, .tv-cell transitions); sizes in vw */
 .tv-dash-wall, .tv-slot { font-family: system-ui, sans-serif; }
 .tv-slot {

@@ -13,7 +13,7 @@ import { mixItems } from '../../services/tv/mix';
 import { useReducedMotion } from '../Common/SidePanel';
 import TvTileCard from './TvTileCard';
 import TvFooter from './TvFooter';
-import { keepLive, pinSlots, useLivingWall } from './useLivingWall';
+import { keepLive, pinSlots, swapProps, useLivingWall } from './useLivingWall';
 import { useBreakingDetection, useBreakingNews } from './useBreakingNews';
 import { kevAddedMap } from '../../services/tv/breaking';
 import { CellDelayContext, cellDelayMs, SPEED_FACTOR, wallOutMs, wallTransition } from './wallMotion';
@@ -120,7 +120,7 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
 
   const news = useBreakingNews();
   const size = tv.size;
-  const { slots, size: gridSize, leaving, label, prioritize, acceptsNews } = useLivingWall(
+  const { slots, size: gridSize, leaving, label, prioritize, acceptsNews, swapNow } = useLivingWall(
     (full, live) => {
       const { main, npm } = buildParts();
       const tiles = [...main, ...npm];
@@ -182,6 +182,7 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
             data-size={gridSize}
             data-panel={s.itemId}
             data-leaving={leaving.has(s.key) ? '1' : undefined}
+            {...swapProps(() => swapNow(s.key), 'Show another panel')}
             style={{ gridColumn: `${s.col + 1} / span ${s.w}`, gridRow: `${s.row + 1} / span ${s.h}`, ['--i' as string]: s.order } as CSSProperties}
           >
             <CellDelayContext.Provider value={cellDelayMs(transition, s.order, tv.speed)}>
@@ -197,6 +198,7 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
             leaving={leaving.has(s.key)}
             isNew={news.isNew(s)}
             now={now}
+            onSwap={() => swapNow(s.key)}
             style={{ gridColumn: `${s.col + 1} / span ${s.w}`, gridRow: `${s.row + 1} / span ${s.h}`, ['--i' as string]: s.order } as CSSProperties}
           />
         ))}
