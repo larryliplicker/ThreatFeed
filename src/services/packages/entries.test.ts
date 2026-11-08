@@ -58,8 +58,8 @@ describe('normalizeName', () => {
     expect(normalizeName('nuget', 'Newtonsoft.Json')).toBe('newtonsoft.json');
     expect(normalizeName('cargo', 'serde_json')).toBe('serde-json');
     expect(normalizeName('cargo', 'Foo_Bar')).toBe('foo-bar'); // crates.io names are case-insensitive
-    expect(normalizeName('maven', 'Org.Foo:Bar_x')).toBe('Org.Foo:Bar_x');
-    expect(normalizeName('go', 'Github.com/Foo/bar')).toBe('Github.com/Foo/bar');
+    expect(normalizeName('maven', 'Org.Foo:Bar_x')).toBe('org.foo:bar_x');
+    expect(normalizeName('go', 'Github.com/Foo/bar')).toBe('github.com/foo/bar');
   });
 });
 
@@ -97,5 +97,12 @@ describe('otherEcosystemEntries', () => {
       { ecosystem: 'maven', name: 'g:a', version: '1' },
     ]);
     expect(otherEcosystemEntries(undefined)).toEqual([]);
+  });
+});
+
+describe('case-insensitive names in every ecosystem', () => {
+  it('normalises Maven and Go names to lower case', () => {
+    expect(normalizeName('maven', 'net.sf.saxon:Saxon-HE')).toBe('net.sf.saxon:saxon-he');
+    expect(normalizeName('go', 'github.com/Sirupsen/logrus')).toBe('github.com/sirupsen/logrus');
   });
 });

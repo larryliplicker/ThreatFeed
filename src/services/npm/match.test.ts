@@ -264,6 +264,15 @@ describe('matchPackages across ecosystems', () => {
     expect(r).toMatchObject({ status: 'affected', entry: { name: 'Foo_Bar.baz', version: '1.0' } });
   });
 
+  it('matches Maven and Go names case-insensitively, keeping the entry spelling', () => {
+    const saxon: NpmIndexEntry = ['GHSA-saxn-0000-0001', 'high', [['net.sf.saxon:Saxon-HE', '< 12.0', '12.0']]];
+    const [mv] = matchPackages([{ ecosystem: 'maven', name: 'net.sf.saxon:saxon-he', version: '11.0' }], { maven: data([saxon]) }, null);
+    expect(mv).toMatchObject({ status: 'affected', entry: { name: 'net.sf.saxon:saxon-he' } });
+    const logrus: NpmIndexEntry = ['GHSA-logr-0000-0001', 'high', [['github.com/Sirupsen/logrus', '< 1.4.2', '1.4.2']]];
+    const [go] = matchPackages([{ ecosystem: 'go', name: 'github.com/sirupsen/logrus', version: 'v1.4.0' }], { go: data([logrus]) }, null);
+    expect(go).toMatchObject({ status: 'affected', entry: { name: 'github.com/sirupsen/logrus' } });
+  });
+
   it('flags log4j-core 2.14.1 for Log4Shell, and 2.15.0 is outside that range', () => {
     const maven = { ecosystem: 'maven' as const, name: 'org.apache.logging.log4j:log4j-core' };
     const [hit] = matchPackages([{ ...maven, version: '2.14.1' }], { maven: data([LOG4J]) }, null);

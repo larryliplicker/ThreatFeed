@@ -4,7 +4,7 @@ import type { NpmMatches } from '../../hooks/useNpmMatches';
 import type { NpmAdvisoryData, NpmMalwareData } from '../../services/npm/advisories';
 import type { EcosystemAdvisories } from '../../hooks/useNpmAdvisories';
 import { ECOSYSTEMS, type Ecosystem } from '../../services/packages/ecosystems';
-import { type MatchedAdvisory, type PackageResult, type PackageStatus } from '../../services/npm/match';
+import { resultKey, type MatchedAdvisory, type PackageResult, type PackageStatus } from '../../services/npm/match';
 import {
   DEFAULT_NPM_FILTERS, ecoFromParam, ecosystemRows, parsePackageKey, filterNpmRows, NPM_DAY_RANGES, npmStats, type AffectedEntry, type NpmDays, type NpmFilters, type NpmRow,
 } from '../../services/npm/npmFilters';
@@ -267,7 +267,7 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, fi
         {entries.length === 0 ? (
           <p className="text-sm font-serif text-theme-text-muted">
             <Package className="w-4 h-4 inline -mt-0.5 mr-1" />
-            List the npm packages you depend on in <a href={buildHash('settings', 'npm')} className="text-theme-accent underline">Settings → My npm packages</a> to see here which advisories and malicious releases affect them. Matching happens on this device.
+            List the packages you depend on (npm, PyPI, Maven, Go, NuGet, crates.io) in <a href={buildHash('settings', 'npm')} className="text-theme-accent underline">Settings → My packages</a> to see here which advisories and malicious releases affect them. Matching happens on this device.
           </p>
         ) : (
           <>
@@ -277,7 +277,7 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, fi
                 : 'Matching…'}
             </p>
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {results.map((r) => <PackageCard key={formatPackageEntry(r.entry)} result={r} osvChecking={osvChecking} />)}
+              {results.map((r) => <PackageCard key={resultKey(r)} result={r} osvChecking={osvChecking} />)}
             </ul>
           </>
         )}
@@ -333,7 +333,7 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, fi
         <button onClick={() => setSeverity('')} className={chipClass(!filters.severity)}>All severities</button>
         {SEVERITIES.map((s) => <button key={s} onClick={() => setSeverity(filters.severity === s ? '' : s)} className={chipClass(filters.severity === s)}>{s}</button>)}
         <span className="mx-1 text-theme-border">|</span>
-        {entries.length > 0 && <button onClick={() => toggleFlag('mine')} className={chipClass(flags.has('mine'))} title="Advisories listed for a package in Settings → My npm packages">Affects my packages</button>}
+        {entries.length > 0 && <button onClick={() => toggleFlag('mine')} className={chipClass(flags.has('mine'))} title="Advisories listed for a package in Settings → My packages">Affects my packages</button>}
         {FLAGS.map((f) => <button key={f.id} onClick={() => toggleFlag(f.id)} className={chipClass(flags.has(f.id))} title={f.title}>{f.label}</button>)}
         {pkg && <button onClick={() => setPkg('')} className={chipClass(true)}>{packageLabel(pkg, multi)} ×</button>}
       </div>
@@ -443,7 +443,7 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, fi
         {yourMalware.length > 0 && (
           <ul className="mb-3 space-y-1">
             {yourMalware.map((r) => (
-              <li key={formatPackageEntry(r.entry)} className="flex flex-wrap items-center gap-2 p-2 rounded border border-rose-600 bg-rose-600/10 text-xs font-mono">
+              <li key={resultKey(r)} className="flex flex-wrap items-center gap-2 p-2 rounded border border-rose-600 bg-rose-600/10 text-xs font-mono">
                 <SeverityPill severity="critical" />
                 <span className="font-bold text-theme-text">Your {formatPackageEntry(r.entry)}</span>
                 {r.advisories.filter((a) => a.malware).map((a) => <AdvisoryId key={a.id} id={a.id} />)}

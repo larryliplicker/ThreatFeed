@@ -86,7 +86,7 @@ export const NpmPackagesSettings: React.FC = () => {
         </form>
         {invalid.length > 0 && (
           <p role="alert" className="text-xs font-mono text-rose-600 dark:text-rose-300">
-            Not added: {invalid.join(', ')}. Use a package name, optionally followed by @ and an exact version such as 4.17.15; non-npm packages need a prefix such as pypi: or maven:.
+            Not added: {invalid.join(', ')}. Use a package name, optionally followed by @ and an exact version such as 4.17.15 (Go versions start with v, as in v0.17.0); non-npm packages need a prefix such as pypi: or maven:.
           </p>
         )}
       </div>

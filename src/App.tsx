@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { firstEarlierId } from './services/lastVisit';
+import { chronologicalSort, showsEarlierDivider } from './services/frontPageOrder';
 import { useFeeds } from './context/FeedContext';
 import { useSettings } from './context/SettingsContext';
 import { useFilter } from './context/FilterContext';
@@ -111,10 +112,10 @@ export const App: React.FC = () => {
 
   // Calculate filtered articles based on tab and active filters
   const displayArticles = useMemo(() => {
-    // 'unread' enforces the unread filter; a chronological front page is a newest-first stream
+    // 'unread' enforces the unread filter; a chronological front page is a newest-first stream unless another sort was picked
     const effectiveFilters =
       activeTab === 'unread' ? { ...filters, readStatus: 'unread' as const }
-      : chronological && !(isSearching && filters.sortBy === 'relevance') ? { ...filters, sortBy: 'newest' as const }
+      : chronological ? { ...filters, sortBy: chronologicalSort(filters.sortBy, isSearching) }
       : filters;
 
     return filterAndSortArticles(
@@ -134,7 +135,7 @@ export const App: React.FC = () => {
 
   // Chronological front page only (and only while it is a newest-first stream): where the stories from before the last visit begin
   const earlierId = useMemo(
-    () => chronological && visitBaseline !== null && !(isSearching && filters.sortBy === 'relevance')
+    () => chronological && visitBaseline !== null && showsEarlierDivider(filters.sortBy, isSearching)
       ? firstEarlierId(displayArticles, visitBaseline)
       : null,
     [chronological, visitBaseline, isSearching, filters.sortBy, displayArticles]

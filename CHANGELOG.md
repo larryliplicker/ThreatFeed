@@ -6,6 +6,7 @@ The project has no tagged releases yet, so changes are grouped by date. Entries 
 
 ## Unreleased
 
+- Fixed: Sort By works on the chronological front page (newest-first stays the default; the "Earlier" divider only shows when newest-first). Package names match case-insensitively in every ecosystem (a `Saxon-HE` advisory now affects `saxon-he`); `#/vulns/npm?eco=<ecosystem>` keeps the filter when that file is loading or failed; two ecosystems with the same package name no longer share a React key; "My packages" wording on the Packages tab; the invalid-entry message explains that Go versions start with `v`
 - New defaults (only settings you never changed move to them): TV and dashboards 30 s, X-Small tiles, Slow animation; the front page is chronological; the built-in Watchlist, My Stack and Watched CVEs rules start off, so My Feed starts empty (rules with notifications on stay on); the watchlist is trimmed to 21 key terms and vendors; Consumer Tech, Swedish (Feber) and Tech Guides & How-To are off in Categories in use
 - The Vulns "npm packages" tab is now "Packages" with an ecosystem filter (`eco=`); Top weaknesses, Advisories by ecosystem and My packages moved to the left column; TV tiles and dashboard panels cover every watched ecosystem with a label; an advisory link opens from whichever ecosystem has it; the tab still works when the npm data fails to load
 - Colour emoji in the interface are replaced by grey icons, and country flags by two-letter country codes (full name on hover)

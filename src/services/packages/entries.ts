@@ -63,6 +63,9 @@ export function normalizeName(eco: Ecosystem, name: string): string {
   switch (eco) {
     case 'npm':
     case 'nuget':
+    case 'maven':
+    case 'go':
+      // Case-insensitive everywhere: over-matching beats a false "not affected" on a case slip
       return name.toLowerCase();
     case 'pypi':
       return name.toLowerCase().replace(/[-_.]+/g, '-');

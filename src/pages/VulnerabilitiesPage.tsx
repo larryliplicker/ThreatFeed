@@ -39,7 +39,7 @@ const NpmView: React.FC<{ onOpenCve: (cve: string) => void; noData: React.ReactN
   const [ecoParam] = useHashParam('eco');
   const eco = ecoFromParam(ecoParam);
   const files = useEcosystemAdvisories(ecosToLoad(eco, matches.watchedEcos));
-  return canShowTab(files.data) ? <NpmTab advisories={advisories} malware={malware} matches={matches} files={files} onOpenCve={onOpenCve} /> : <>{noData}</>;
+  return canShowTab(files.data) || eco !== '' ? <NpmTab advisories={advisories} malware={malware} matches={matches} files={files} onOpenCve={onOpenCve} /> : <>{noData}</>;
 };
 
 export const VulnerabilitiesPage: React.FC<{ onOpenArticle: (article: Article) => void }> = ({ onOpenArticle }) => {
