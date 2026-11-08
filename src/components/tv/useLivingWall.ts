@@ -1,7 +1,7 @@
 import { KeyboardEvent, MouseEvent, useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from '../Common/SidePanel';
 import { TvTileSize } from '../../types';
-import { EngineItem, Rng, Slot, WallState, Swap, applySwap, initWall, nextDue, pageLabel, planSwap, prioritize as prioritizeItem, refill, shiftDue } from '../../services/tv/tileEngine';
+import { EngineItem, Rng, Slot, WallState, Swap, applySwap, initWall, isReplay, nextDue, pageLabel, planManualSwap, planSwap, prioritize as prioritizeItem, refill, shiftDue } from '../../services/tv/tileEngine';
 
 export const SWAP_OUT_MS = 450;
 export const REDUCED_OUT_MS = 200;
@@ -164,6 +164,7 @@ export function useLivingWall(build: (full: boolean, live: ReadonlySet<string>) 
     };
     /** Swaps the next due slot, or `key` when given (a manual swap, which takes the same path) */
     const fire = (key?: string) => {
+      const manual = key !== undefined;
       timer = undefined;
       if (gen !== generation.current) return;
       let w = wallRef.current;
@@ -173,7 +174,14 @@ export function useLivingWall(build: (full: boolean, live: ReadonlySet<string>) 
         w = refill(w, callBuild(false), now(), intervalMs, rng);
         setWall(w);
       }
-      const swap = planSwap(w, slot.key, now(), intervalMs, rng);
+      let swap = manual ? planManualSwap(w, slot.key, now(), intervalMs, rng) : planSwap(w, slot.key, now(), intervalMs, rng);
+      if (manual && isReplay(swap, slot)) {
+        // Nothing off screen in this queue: a fresh build may bring something new
+        w = refill(w, callBuild(false), now(), intervalMs, rng);
+        setWall(w);
+        if (!w.slots.some(t => t.key === slot.key)) return schedule(); // the refill laid the wall out afresh
+        swap = planManualSwap(w, slot.key, now(), intervalMs, rng);
+      }
       if (!swap.leaving.length) return schedule();
       pending = swap;
       setLeaving(new Set(swap.leaving));

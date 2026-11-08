@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applySwap, drawDue, shiftDue, EngineItem, GRIDS, initWall, jitterMs, nextDue, pageLabel, planSwap, prioritize, refill, Rng, Shape, Slot, WallState,
+  applySwap, drawDue, shiftDue, EngineItem, GRIDS, initWall, jitterMs, nextDue, pageLabel, planManualSwap, planSwap, prioritize, refill, Rng, Shape, Slot, WallState,
 } from './tileEngine';
 import { TvTileSize } from '../../types';
 
@@ -435,5 +435,60 @@ describe('too few items for the chosen size', () => {
       expectCovered(s);
       expectDistinct(s);
     }
+  });
+});
+
+describe('planManualSwap', () => {
+  const dash = (): EngineItem[] => [
+    ...Array.from({ length: 14 }, (_, i): EngineItem => ({ id: `n${i}`, weight: 1, shapes: ['1x1'] })),
+    ...Array.from({ length: 4 }, (_, i): EngineItem => ({ id: `c${i}`, weight: 1, shapes: ['2x1', '2x2'] })),
+  ];
+
+  it('a click on any slot of an X-Small dashboard-like pool brings a different item', () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      const rng = mulberry32(seed);
+      let s = initWall(dash(), 'xsmall', 0, MIN, rng);
+      for (let k = 0; k < seed % 6; k++) {
+        const due = nextDue(s)!;
+        s = applySwap(s, planSwap(s, due.key, due.dueAt, MIN, rng));
+      }
+      for (const slot of s.slots) {
+        const swap = planManualSwap(s, slot.key, 1000, MIN, rng);
+        // A wide tile may replay when every other chart is on screen and the wall is at its maximum (no split room)
+        if (slot.w === 1) expect(swap.arriving.some(t => t.itemId === slot.itemId), `seed ${seed} ${slot.itemId}`).toBe(false);
+        const next = applySwap(s, swap);
+        expectCovered(next);
+        expectDistinct(next);
+      }
+    }
+  });
+
+  it('an item already used this cycle can come back', () => {
+    const rng = mulberry32(4);
+    const s0 = initWall(dash(), 'xsmall', 0, MIN, rng);
+    const s = { ...s0, queue: s0.queue.map(q => ({ ...q, used: true })), cursor: s0.queue.length };
+    const slot = s.slots.find(t => t.w === 1)!;
+    const swap = planManualSwap(s, slot.key, 1000, MIN, rng);
+    expect(swap.arriving.some(t => t.itemId === slot.itemId)).toBe(false);
+    expectCovered(applySwap(s, swap));
+  });
+
+  it('with every pool item on screen it replays the slot and does not throw', () => {
+    const rng = mulberry32(2);
+    const s0 = initWall(stories(30), 'medium', 0, MIN, rng);
+    const onScreen = new Set(s0.slots.map(t => t.itemId));
+    const s = { ...s0, queue: s0.queue.filter(q => onScreen.has(q.item.id)), cursor: 99 };
+    const slot = s.slots[0];
+    const swap = planManualSwap(s, slot.key, 1000, MIN, rng);
+    expect(swap.leaving).toEqual([slot.key]);
+    expect(swap.arriving.map(t => t.itemId)).toEqual([slot.itemId]);
+  });
+
+  it('timer swaps are untouched: planSwap still replays when only used items are left', () => {
+    const rng = mulberry32(4);
+    const s0 = initWall(dash(), 'xsmall', 0, MIN, rng);
+    const s = { ...s0, queue: s0.queue.map(q => ({ ...q, used: true })), cursor: s0.queue.length };
+    const slot = s.slots.find(t => t.w === 1)!;
+    expect(planSwap(s, slot.key, 1000, MIN, rng).arriving.map(t => t.itemId)).toEqual([slot.itemId]);
   });
 });

@@ -279,6 +279,60 @@ export function planSwap(state: WallState, slotKey: string, now: number, interva
   return { leaving: op.leaving.map(t => t.key), arriving: order.map((i, n) => arrive(op.rects[i], op.picks[i], n)) };
 }
 
+/** True when a swap only replays the slot's own item (nothing else could come in) */
+export const isReplay = (swap: Swap, slot: Slot) => swap.arriving.length === 1 && swap.arriving[0].itemId === slot.itemId && swap.leaving.length === 1;
+
+/**
+ * A manual swap (a click): the normal swap when it brings something new; otherwise any item that fits and is not on
+ * screen, even one already used this cycle: a replace, then a merge with any neighbour whatever its age, then (for a
+ * wide tile) a split into two singles. Only when nothing at all is off screen does the slot replay itself.
+ */
+export function planManualSwap(state: WallState, slotKey: string, now: number, intervalMs: number, rng: Rng): Swap {
+  const slot = state.slots.find(t => t.key === slotKey);
+  const normal = planSwap(state, slotKey, now, intervalMs, rng);
+  if (!slot || !isReplay(normal, slot)) return normal;
+  const g = GRIDS[state.size];
+  const waiting = held(state.queue);
+  const arrive = (rect: Rect, i: number, n: number) => makeSlot(rect, state.queue[i].item.id, state.seq + n, state.cycle, state.queue[i].page, state.pageCount, now, intervalMs, rng, n);
+  /** Distinct queue indexes for `rects`, larger first, from every entry (unused ones first), not on screen */
+  const anyPicks = (rects: Rect[]): number[] | null => {
+    const ex = new Set([...waiting, ...state.slots.map(t => t.itemId)]); // the leaving tiles' own items too: a click brings something else
+    const taken = new Set<number>();
+    const out: number[] = Array(rects.length);
+    for (const i of rects.map((_, k) => k).sort((a, b) => area(rects[b]) - area(rects[a]) || a - b)) {
+      const shape = shapeOf(rects[i]);
+      let j = pick(state.queue, state.cursor, shape, ex, taken);
+      if (j < 0) j = pick(state.queue, 0, shape, ex, taken, true);
+      if (j < 0) return null;
+      out[i] = j;
+      taken.add(j);
+      ex.add(state.queue[j].item.id);
+    }
+    return out;
+  };
+  const stages: { leaving: Slot[]; rects: Rect[] }[][] = [[{ leaving: [slot], rects: [rectOf(slot)] }]];
+  const count = state.slots.length;
+  if (count - 1 >= g.min) {
+    stages.push(state.slots.flatMap(mate => {
+      const rect = mate.key !== slot.key ? joined(slot, mate) : null;
+      return rect && g.shapes.includes(shapeOf(rect)) ? [{ leaving: [slot, mate], rects: [rect] }] : [];
+    }));
+  }
+  const split = halves(rectOf(slot));
+  if (split && count + 1 <= g.max && split.every(r => g.shapes.includes(shapeOf(r)))) stages.push([{ leaving: [slot], rects: split }]);
+  for (const stage of stages) {
+    const found = stage.flatMap(c => {
+      const picks = anyPicks(c.rects);
+      return picks ? [{ ...c, picks }] : [];
+    });
+    if (!found.length) continue;
+    const c = found[Math.min(found.length - 1, Math.floor(rng() * found.length))];
+    const order = c.rects.map((_, i) => i).sort((a, b) => readingOrder(c.rects[a], c.rects[b]));
+    return { leaving: c.leaving.map(t => t.key), arriving: order.map((i, n) => arrive(c.rects[i], c.picks[i], n)) };
+  }
+  return normal;
+}
+
 /**
  * The swap for the first priority entry at `slot`, or null when there is none or it cannot go there: a due single merges
  * with one single neighbour into a wide tile (whatever that neighbour's age) while the count may drop, otherwise the
