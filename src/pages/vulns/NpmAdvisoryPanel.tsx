@@ -5,7 +5,7 @@ import { useNpmAdvisories } from '../../hooks/useNpmAdvisories';
 import { useNpmMatches } from '../../hooks/useNpmMatches';
 import { closePanel, openPanel } from '../../hooks/useHashRoute';
 import type { NpmAdvisory, NpmAdvisoryData, NpmMalwareData, NpmRange } from '../../services/npm/advisories';
-import type { PackageResult } from '../../services/npm/match';
+import type { AdvisoriesByEcosystem, PackageResult } from '../../services/npm/match';
 import type { AffectedEntry } from '../../services/npm/npmFilters';
 import { formatPackageEntry } from '../../services/npm/semver';
 import { safeHttpUrl } from '../../services/rss/sanitizer';
@@ -28,6 +28,15 @@ type Found =
   | { kind: 'detail'; advisory: NpmAdvisory }
   | { kind: 'index'; severity: NpmAdvisory['severity']; ranges: NpmRange[]; withdrawn: boolean }
   | { kind: 'malware'; ranges: NpmRange[]; published: string };
+
+/** The id in whichever loaded ecosystem has it (npm first); the malware reports are npm's */
+export function findAdvisoryIn(id: string, files: AdvisoriesByEcosystem, malware: NpmMalwareData | null): Found | null {
+  for (const data of [files.npm, ...Object.entries(files).filter(([eco]) => eco !== 'npm').map(([, d]) => d)]) {
+    const found = findAdvisory(id, data ?? null, null);
+    if (found) return found;
+  }
+  return findAdvisory(id, null, malware);
+}
 
 function findAdvisory(id: string, data: NpmAdvisoryData | null, malware: NpmMalwareData | null): Found | null {
   const advisory = data?.recent.find((a) => a.id === id);
@@ -239,8 +248,12 @@ export const NpmAdvisoryPanel: React.FC<NpmAdvisoryPanelProps> = ({ id, found, l
 export const NpmAdvisoryPanelHost: React.FC<{ id: string; onOpenArticle: (a: Article) => void }> = ({ id, onOpenArticle }) => {
   const { articles } = useFeeds();
   const { advisories, malware, failed } = useNpmAdvisories();
-  const { results, affecting } = useNpmMatches(advisories, malware);
-  const found = useMemo(() => findAdvisory(id, advisories, malware), [id, advisories, malware]);
+  const { results, affecting } = useNpmMatches(advisories, malware); // also loads the watched ecosystems' files
+  const { ecosystemAdvisories } = useFeeds();
+  const found = useMemo(
+    () => findAdvisoryIn(id, { ...ecosystemAdvisories, ...(advisories ? { npm: advisories } : {}) }, malware),
+    [id, advisories, ecosystemAdvisories, malware]
+  );
   const cves = found?.kind === 'detail' ? found.advisory.cves : NO_CVES;
   const news = useMemo(() => relatedNews(articles, id, cves), [articles, id, cves]);
   return (

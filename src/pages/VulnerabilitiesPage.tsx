@@ -5,7 +5,7 @@ import { useFeeds } from '../context/FeedContext';
 import { useSettings } from '../context/SettingsContext';
 import { useTabInk } from '../hooks/useTabInk';
 import { useMsrc, useVulns } from '../hooks/useVulns';
-import { openPanel, useHashRoute } from '../hooks/useHashRoute';
+import { openPanel, useHashParam, useHashRoute } from '../hooks/useHashRoute';
 import { formatRelativeTime } from '../utils/date';
 import { KevTab } from './vulns/KevTab';
 import { NewCvesTab } from './vulns/NewCvesTab';
@@ -15,7 +15,8 @@ import { VulnNewsTab } from './vulns/VulnNewsTab';
 import { WatchingTab } from './vulns/WatchingTab';
 import { PatchTuesdayTab } from './vulns/PatchTuesdayTab';
 import { NpmTab } from './vulns/NpmTab';
-import { useNpmAdvisories } from '../hooks/useNpmAdvisories';
+import { useEcosystemAdvisories, useNpmAdvisories } from '../hooks/useNpmAdvisories';
+import { ecoFromParam, ecosToLoad } from '../services/npm/npmFilters';
 import { useNpmMatches } from '../hooks/useNpmMatches';
 import { useNpmUnseen } from '../hooks/useNpmUnseen';
 import { articlesByCve } from './vulns/shared';
@@ -34,7 +35,11 @@ const PatchTuesdayView: React.FC<{ stackKeywords: string[]; onOpenCve: (cve: str
 const NpmView: React.FC<{ onOpenCve: (cve: string) => void; noData: React.ReactNode }> = ({ onOpenCve, noData }) => {
   const { advisories, malware } = useNpmAdvisories();
   const matches = useNpmMatches(advisories, malware);
-  return advisories ? <NpmTab advisories={advisories} malware={malware} matches={matches} onOpenCve={onOpenCve} /> : <>{noData}</>;
+  // The ecosystem filter decides which advisory files the tab loads: All is npm and the watched ones, a pick is that one
+  const [ecoParam] = useHashParam('eco');
+  const eco = ecoFromParam(ecoParam);
+  const files = useEcosystemAdvisories(ecosToLoad(eco, matches.watchedEcos));
+  return advisories ? <NpmTab advisories={advisories} malware={malware} matches={matches} files={files} onOpenCve={onOpenCve} /> : <>{noData}</>;
 };
 
 export const VulnerabilitiesPage: React.FC<{ onOpenArticle: (article: Article) => void }> = ({ onOpenArticle }) => {
@@ -74,7 +79,7 @@ export const VulnerabilitiesPage: React.FC<{ onOpenArticle: (article: Article) =
     { id: 'patch', label: 'Patch Tuesday', icon: <CalendarCheck className="w-4 h-4" /> },
     { id: 'epss', label: 'Exploit prediction', icon: <Gauge className="w-4 h-4" /> },
     { id: 'oss', label: 'Open source', icon: <Package className="w-4 h-4" />, count: vulns?.advisories.length },
-    { id: 'npm', label: 'npm packages', icon: <Boxes className="w-4 h-4" />, fresh: npmUnseen },
+    { id: 'npm', label: 'Packages', icon: <Boxes className="w-4 h-4" />, fresh: npmUnseen },
     { id: 'news', label: 'Vulnerability news', icon: <Newspaper className="w-4 h-4" /> },
     { id: 'watching', label: 'Watching', icon: <Star className="w-4 h-4" />, count: watched.length },
   ];

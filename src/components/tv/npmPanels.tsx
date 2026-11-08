@@ -1,8 +1,9 @@
 import type { NpmAdvisory, NpmAdvisoryData, NpmMalwareData } from '../../services/npm/advisories';
-import type { PackageResult } from '../../services/npm/match';
+import type { AdvisoriesByEcosystem, PackageResult } from '../../services/npm/match';
+import { ECOSYSTEMS, type Ecosystem } from '../../services/packages/ecosystems';
 import type { Figure } from '../../services/tv/dashboard';
 import {
-  malwarePerDay, myPackagesStatus, newestCriticalNpm, npmFixShare, npmPerDayBySeverity, npmSeverityShare, npmTopCwes, npmTopPackages, npmVulnVsMalware,
+  advisoriesByEcosystem, malwarePerDay, mergeAdvisoryFiles, myPackagesStatus, newestCriticalNpm, npmFixShare, npmPerDayBySeverity, npmSeverityShare, npmTopCwes, npmTopPackages, npmVulnVsMalware,
 } from '../../services/charts/figures';
 import type { Slice } from '../charts/chartData';
 import { dayLabel, dayTotals, memoLast, pool, sum } from './dashPool';
@@ -14,6 +15,8 @@ export interface NpmCtx {
   data: NpmAdvisoryData | null; malware: NpmMalwareData | null;
   /** The watched packages matched against the advisories; empty when none are watched */
   results: PackageResult[]; now: number;
+  /** The other watched ecosystems' advisory files; the charts and the newest critical cover them with npm's */
+  others?: AdvisoriesByEcosystem;
 }
 
 
@@ -25,9 +28,24 @@ export function npmWeek(data: NpmAdvisoryData, now: number): Figure {
 }
 
 const NO_NPM: NpmAdvisoryData = { version: 1, generatedAt: '', updatedAt: '', recent: [], index: [] };
+/** Every loaded ecosystem's file, npm's first; the newest critical advisory across them with its ecosystem */
+function newestCriticalOf(files: AdvisoriesByEcosystem): { advisory: NpmAdvisory; eco: Ecosystem } | null {
+  let best: { advisory: NpmAdvisory; eco: Ecosystem } | null = null;
+  for (const eco of Object.keys(files) as Ecosystem[]) {
+    const a = files[eco] ? newestCriticalNpm(files[eco]!) : null;
+    if (a && (!best || a.published > best.advisory.published)) best = { advisory: a, eco };
+  }
+  return best;
+}
+
 const npmData = memoLast((c: NpmCtx) => {
-  const data = c.data ?? NO_NPM;
+  const files: AdvisoriesByEcosystem = { npm: c.data ?? NO_NPM, ...c.others };
+  const data = mergeAdvisoryFiles(files) ?? NO_NPM;
+  const crit = newestCriticalOf(files);
   return {
+    multi: Object.keys(files).length > 1,
+    ecosystems: advisoriesByEcosystem(files, c.now),
+    criticalEco: crit?.eco ?? 'npm',
     week: npmWeek(data, c.now),
     daily: npmPerDayBySeverity(data, c.now),
     severity: npmSeverityShare(data, c.now),
@@ -35,7 +53,7 @@ const npmData = memoLast((c: NpmCtx) => {
     packages: npmTopPackages(data, c.now),
     cwes: npmTopCwes(data, c.now),
     mine: myPackagesStatus(c.results),
-    critical: newestCriticalNpm(data),
+    critical: crit?.advisory ?? null,
     malware7d: c.malware ? malwarePerDay(c.malware, c.now, 7) : null,
     fix: npmFixShare(data, c.now),
   };
@@ -48,14 +66,16 @@ const NEW_OR_UPDATED = 'New or updated advisories';
 const NPM_KIND_HEX: Record<string, string> = { [NEW_OR_UPDATED]: '#f59e0b', Malware: '#e11d48', 'Fix available': '#10b981', 'No fix': '#e11d48' };
 // Package statuses as their badges; "Check manually" is grey like every not-a-category slice
 const NPM_STATUS_HEX: Record<string, string> = { Affected: '#e11d48', 'No version': '#f97316', 'Not affected': '#10b981' };
-export const NpmWeekCard = ({ figure }: { figure: Figure }) => <StatCard label="npm advisories · 7 days" figure={figure} color="#f59e0b" />;
-export const NpmSeverityDonut = ({ data }: { data: Slice[] }) => <DonutPanel label="npm advisories by severity · 30 days" data={data} colors={TV_SEVERITY} />;
+export const NpmWeekCard = ({ figure, scope = 'npm' }: { figure: Figure; scope?: string }) => <StatCard label={`${scope} advisories · 7 days`} figure={figure} color="#f59e0b" />;
+export const NpmSeverityDonut = ({ data, scope = 'npm' }: { data: Slice[]; scope?: string }) => <DonutPanel label={`${scope} advisories by severity · 30 days`} data={data} colors={TV_SEVERITY} />;
+// Ecosystem slices by their shown label
+const ECO_HEX: Record<string, string> = { npm: '#e11d48', PyPI: '#0ea5e9', Maven: '#f97316', Go: '#10b981', NuGet: '#8b5cf6', 'crates.io': '#f59e0b' };
 
 /** The newest critical npm advisory: package and fix, the summary (as text), ids and age */
-function NewestNpm({ a, now }: { a: NpmAdvisory; now: number }) {
+function NewestNpm({ a, now, eco }: { a: NpmAdvisory; now: number; eco: Ecosystem }) {
   const r = a.ranges[0];
   return (
-    <Panel label="Newest critical npm advisory">
+    <Panel label={`Newest critical ${ECOSYSTEMS[eco].label} advisory`}>
       {r && (
         <div className="tv-panel-sub">
           <b style={{ color: '#e7ebf0' }}>{r.package}</b> {r.vulnerable} {'·'} {r.patched ? `fixed in ${r.patched}` : 'no fix yet'}
@@ -77,20 +97,21 @@ function NewestNpm({ a, now }: { a: NpmAdvisory; now: number }) {
 export function npmPanels(ctx: NpmCtx, fresh: () => NpmCtx = () => ctx): PanelDef[] {
   if (!ctx.data) return [];
   const { out, add, first: f } = pool(ctx, fresh, npmData);
-  add('npmWeek', false, true, d => <NpmWeekCard figure={d.week} />);
+  add('npmWeek', false, true, d => <NpmWeekCard figure={d.week} scope={d.multi ? 'Package' : 'npm'} />);
   add('npmDaily', true, chartReady(dayTotals(f.daily).map(n => [n])), d => (
-    <StackedPanel label="npm advisories per day by severity · 30 days" buckets={d.daily} axis={dayLabel} colors={TV_SEVERITY} />
+    <StackedPanel label={`${d.multi ? 'Package' : 'npm'} advisories per day by severity · 30 days`} buckets={d.daily} axis={dayLabel} colors={TV_SEVERITY} />
   ));
-  add('npmSeverity', true, f.severity.length > 0, d => <NpmSeverityDonut data={d.severity} />);
+  add('npmSeverity', true, f.severity.length > 0, d => <NpmSeverityDonut data={d.severity} scope={d.multi ? 'Package' : 'npm'} />);
   add('npmKinds', true, f.kinds.length > 0, d => <DonutPanel label="Advisories vs malware · 7 days" data={d.kinds} colors={NPM_KIND_HEX} />);
   add('npmTopPackages', true, f.packages.length > 0, d => (
     <HBarList label="Most affected packages · 30 days" data={d.packages.map(r => [r.label, r.value] as [string, number])} color="#f59e0b" format={name => <span title={name}>{name}</span>} />
   ));
   add('npmTopCwes', true, f.cwes.length > 0, d => (
-    <HBarList label="Top weakness types · npm · 30 days" data={d.cwes.map(r => [r.label, r.value] as [string, number])} color="#38bdf8" format={name => <span title={name}>{name}</span>} />
+    <HBarList label={`Top weakness types · ${d.multi ? 'packages' : 'npm'} · 30 days`} data={d.cwes.map(r => [r.label, r.value] as [string, number])} color="#38bdf8" format={name => <span title={name}>{name}</span>} />
   ));
+  add('npmEcosystems', true, f.multi && f.ecosystems.length > 1, d => <DonutPanel label="Advisories by ecosystem · 30 days" data={d.ecosystems} colors={ECO_HEX} />);
   add('npmMine', true, f.mine.length > 0, d => <DonutPanel label="My packages" data={d.mine} colors={NPM_STATUS_HEX} />);
-  add('npmNewestCritical', true, !!f.critical, (d, now) => (d.critical ? <NewestNpm a={d.critical} now={now} /> : <Panel label="Newest critical npm advisory"><div className="tv-note">Nothing to show yet</div></Panel>));
+  add('npmNewestCritical', true, !!f.critical, (d, now) => (d.critical ? <NewestNpm a={d.critical} now={now} eco={d.criticalEco} /> : <Panel label="Newest critical npm advisory"><div className="tv-note">Nothing to show yet</div></Panel>));
   add('npmMalware7d', false, !!f.malware7d, d => (
     <StatCard label="Malware releases · 7 days" value={sum(d.malware7d ?? [])} color="#f43f5e" note="malicious npm packages reported" spark={d.malware7d ?? undefined} />
   ));

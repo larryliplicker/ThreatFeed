@@ -7,6 +7,7 @@ import { affectingByAdvisory, type AffectedEntry } from '../services/npm/npmFilt
 import { osvCacheFresh, osvQueryBatch, type OsvResult } from '../services/npm/osv';
 import { parsePackageEntry, type PackageEntry } from '../services/npm/semver';
 import { otherEcosystemEntries, watchKey } from '../services/packages/entries';
+import type { Ecosystem } from '../services/packages/ecosystems';
 import { useEcosystemAdvisories } from './useNpmAdvisories';
 
 const OSV_CACHE_KEY = 'npmOsv';
@@ -38,6 +39,9 @@ export interface NpmMatches {
   results: PackageResult[]; // matchPackages' answer, in its order; empty until the advisories load
   affecting: Map<string, AffectedEntry[]>; // advisory id → the watched entries it lists
   osvChecking: boolean; // an OSV lookup is under way
+  watchedEcos: Ecosystem[]; // the ecosystems other than npm that have a watched package
+  ecoData: AdvisoriesByEcosystem; // those ecosystems' loaded advisory files (npm's is the caller's own)
+  ecoFailed: Ecosystem[]; // those that couldn't be loaded: their packages show "no data"
 }
 
 /**
@@ -105,5 +109,5 @@ export function useNpmMatches(advisories: NpmAdvisoryData | null, malware: NpmMa
     return matchPackages([...npmEntries, ...ready], files, malware, osvResults);
   }, [npmEntries, ecoEntries, ecoData, ecoFailed, advisories, malware, osvResults]);
   const affecting = useMemo(() => affectingByAdvisory(results), [results]);
-  return { entries, results, affecting, osvChecking };
+  return { entries, results, affecting, osvChecking, watchedEcos, ecoData, ecoFailed };
 }

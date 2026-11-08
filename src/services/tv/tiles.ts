@@ -6,7 +6,8 @@ import { calculateImportance } from '../articles/importance';
 import { countryName } from '../../utils/countries';
 import { EngineItem, Shape } from './tileEngine';
 import type { NpmAdvisory, NpmAdvisoryData, NpmMalwareData } from '../npm/advisories';
-import type { PackageResult } from '../npm/match';
+import type { AdvisoriesByEcosystem, PackageResult } from '../npm/match';
+import { ECOSYSTEMS, type Ecosystem } from '../packages/ecosystems';
 import { formatPackageEntry } from '../npm/semver';
 
 export type TvTileKind = 'story' | 'victim' | 'kev' | 'breach' | 'trend' | 'npm';
@@ -229,7 +230,7 @@ function watchedHits(results: PackageResult[]): Map<string, Hit[]> {
 const NPM_WEIGHT: Record<NpmTileInfo['severity'], number> = { malware: 10, critical: 8, high: 6, medium: 4, low: 2, unknown: 2 };
 const npmTone = (s: NpmTileInfo['severity']): TvTone => (s === 'critical' || s === 'malware' ? 'critical' : s === 'high' ? 'high' : 'info');
 
-function npmTile(id: string, severity: NpmTileInfo['severity'], time: string, headline: string, packages: string[], range: { vulnerable: string; patched?: string }, cves: string[], hits: Hit[] = []): TvTile {
+function npmTile(id: string, severity: NpmTileInfo['severity'], time: string, headline: string, packages: string[], range: { vulnerable: string; patched?: string }, cves: string[], hits: Hit[] = [], eco: Ecosystem = 'npm'): TvTile {
   const watched = hits.map(h => h.name.toLowerCase());
   const ordered = [...new Set(packages)].sort((a, b) => Number(watched.includes(b.toLowerCase())) - Number(watched.includes(a.toLowerCase())));
   const info: NpmTileInfo = { severity, packages: ordered, vulnerable: range.vulnerable, ids: [id, ...cves], yours: hits.map(h => h.label) };
@@ -238,7 +239,7 @@ function npmTile(id: string, severity: NpmTileInfo['severity'], time: string, he
     id: `npm-${id}`,
     kind: 'npm',
     tone: npmTone(severity),
-    source: severity === 'malware' ? 'npm malware' : 'npm advisory',
+    source: severity === 'malware' ? 'npm malware' : `${ECOSYSTEMS[eco].label} advisory`,
     time,
     headline,
     weight: NPM_WEIGHT[severity] + (hits.length ? 4 : 0),
@@ -251,7 +252,7 @@ function npmTile(id: string, severity: NpmTileInfo['severity'], time: string, he
  * The npm tiles: advisories affecting a watched package (malware releases first, then advisories, newest first in
  * each, at any age the data holds), then the others by `tier` (0 first, 1 next, null left out), newest first in each. Withdrawn advisories never show.
  */
-function npmTiles(data: NpmAdvisoryData, malware: NpmMalwareData | null, results: PackageResult[], tier: (a: NpmAdvisory) => number | null, max: number): TvTile[] {
+function npmTiles(data: NpmAdvisoryData, malware: NpmMalwareData | null, results: PackageResult[], tier: (a: NpmAdvisory) => number | null, max: number, others: AdvisoriesByEcosystem = {}): TvTile[] {
   const hits = watchedHits(results);
   const newest = (a: { time?: string }, b: { time?: string }) => timeOf(b.time ?? '') - timeOf(a.time ?? '');
 
@@ -266,15 +267,20 @@ function npmTiles(data: NpmAdvisoryData, malware: NpmMalwareData | null, results
 
   const yours: TvTile[] = [];
   const tiers: TvTile[][] = [[], []];
-  for (const a of data.recent) {
-    if (a.withdrawn || seen.has(a.id)) continue; // one tile per id: a malware tile already stands for it
-    const h = hits.get(a.id);
-    const t = h?.length ? null : tier(a);
-    if (!h?.length && t === null) continue;
-    // The range shown: the one that matched the watched version, else the advisory's first
-    const range = h?.[0] ?? a.ranges[0] ?? { vulnerable: '' };
-    const tile = npmTile(a.id, a.severity, a.published, a.summary, a.ranges.map(r => r.package), range, a.cves, h);
-    (h?.length ? yours : tiers[t!]).push(tile);
+  // npm first, then the other watched ecosystems' files
+  const files: [Ecosystem, NpmAdvisoryData][] = [['npm', data], ...(Object.keys(others) as Ecosystem[]).filter(e => e !== 'npm' && others[e]).map(e => [e, others[e]!] as [Ecosystem, NpmAdvisoryData])];
+  for (const [eco, file] of files) {
+    for (const a of file.recent) {
+      if (a.withdrawn || seen.has(a.id)) continue; // one tile per id: a malware tile already stands for it
+      const h = hits.get(a.id);
+      const t = h?.length ? null : tier(a);
+      if (!h?.length && t === null) continue;
+      seen.add(a.id);
+      // The range shown: the one that matched the watched version, else the advisory's first
+      const range = h?.[0] ?? a.ranges[0] ?? { vulnerable: '' };
+      const tile = npmTile(a.id, a.severity, a.published, a.summary, a.ranges.map(r => r.package), range, a.cves, h, eco);
+      (h?.length ? yours : tiers[t!]).push(tile);
+    }
   }
   return [...mal.sort(newest), ...yours.sort(newest), ...tiers[0].sort(newest), ...tiers[1].sort(newest)].slice(0, max);
 }
@@ -285,18 +291,18 @@ const within = (iso: string, now: number, ms: number) => {
 };
 
 /** The npm wall: 7 days of advisories, critical and high first, then medium; plus everything affecting a watched package (first) */
-export function tilesForNpm(data: NpmAdvisoryData, malware: NpmMalwareData | null, results: PackageResult[], now: number, max = 30): TvTile[] {
+export function tilesForNpm(data: NpmAdvisoryData, malware: NpmMalwareData | null, results: PackageResult[], now: number, max = 30, others: AdvisoriesByEcosystem = {}): TvTile[] {
   return npmTiles(data, malware, results, a => {
     if (!within(a.published, now, 7 * DAY_MS)) return null;
     return a.severity === 'critical' || a.severity === 'high' ? 0 : a.severity === 'medium' ? 1 : null;
-  }, max);
+  }, max, others);
 }
 
 /** Mixed mode's npm tiles: critical and high advisories from the last 48 hours, plus everything affecting a watched package (first) */
-export function npmTilesForMix(data: NpmAdvisoryData, malware: NpmMalwareData | null, results: PackageResult[], now: number, max = 10): TvTile[] {
+export function npmTilesForMix(data: NpmAdvisoryData, malware: NpmMalwareData | null, results: PackageResult[], now: number, max = 10, others: AdvisoriesByEcosystem = {}): TvTile[] {
   return npmTiles(data, malware, results, a => (
     within(a.published, now, 48 * HOUR_MS) && (a.severity === 'critical' || a.severity === 'high') ? 0 : null
-  ), max);
+  ), max, others);
 }
 
 const STORY_SHAPES: Shape[] = ['1x1', '2x1', '2x2'];

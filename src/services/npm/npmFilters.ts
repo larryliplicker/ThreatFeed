@@ -2,7 +2,8 @@
 // of rows, its filters and the stats strip. Pure, so the tab only renders.
 
 import type { NpmAdvisoryData, NpmMalwareData, NpmRange } from './advisories';
-import { resultKey, type PackageResult, type Severity } from './match';
+import { resultKey, type AdvisoriesByEcosystem, type PackageResult, type Severity } from './match';
+import { ECOSYSTEMS, type Ecosystem } from '../packages/ecosystems';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -11,6 +12,7 @@ export type NpmRowKind = 'vulnerability' | 'malware';
 /** One advisory as the list shows it; a malware advisory is grouped over its packages and read as critical */
 export interface NpmRow {
   id: string;
+  ecosystem: Ecosystem;
   kind: NpmRowKind;
   severity: Severity;
   packages: string[];
@@ -37,9 +39,10 @@ export interface NpmFilters {
   days: NpmDays;
   query: string;
   pkg: string; // one package, '' for any
+  eco: Ecosystem | ''; // one ecosystem, '' for all loaded ones
 }
 
-export const DEFAULT_NPM_FILTERS: NpmFilters = { severity: '', type: 'vulnerability', mine: false, fix: false, kev: false, cve: false, days: 30, query: '', pkg: '' };
+export const DEFAULT_NPM_FILTERS: NpmFilters = { severity: '', type: 'vulnerability', mine: false, fix: false, kev: false, cve: false, days: 30, query: '', pkg: '', eco: '' };
 
 /** A watched entry an advisory affects (or may affect), as matchPackages listed it */
 export interface AffectedEntry {
@@ -53,10 +56,11 @@ export interface AffectedEntry {
 const time = (iso: string) => Date.parse(iso) || 0;
 
 /** The detailed advisories and the malware reports, newest first */
-export function npmRows(data: NpmAdvisoryData | null, malware: NpmMalwareData | null): NpmRow[] {
+export function npmRows(data: NpmAdvisoryData | null, malware: NpmMalwareData | null, ecosystem: Ecosystem = 'npm'): NpmRow[] {
   const rows: NpmRow[] = (data?.recent ?? []).map((a) => {
     const row: NpmRow = {
       id: a.id,
+      ecosystem,
       kind: 'vulnerability',
       severity: a.severity,
       packages: [...new Set(a.ranges.map((r) => r.package))],
@@ -80,11 +84,29 @@ export function npmRows(data: NpmAdvisoryData | null, malware: NpmMalwareData | 
       row.ranges.push({ package: pkg, vulnerable });
       continue;
     }
-    malwareRows.set(id, { id, kind: 'malware', severity: 'critical', packages: [pkg], summary: '', ranges: [{ package: pkg, vulnerable }], cves: [], published, date: published, withdrawn: false });
+    malwareRows.set(id, { id, ecosystem, kind: 'malware', severity: 'critical', packages: [pkg], summary: '', ranges: [{ package: pkg, vulnerable }], cves: [], published, date: published, withdrawn: false });
   }
   for (const row of malwareRows.values()) row.summary = `Malicious code in ${row.packages.join(', ')}`;
 
   return [...rows, ...malwareRows.values()].sort((a, b) => time(b.date) - time(a.date) || a.id.localeCompare(b.id));
+}
+
+/** The rows of every loaded ecosystem as one list, newest first; the malware reports belong to npm */
+export function ecosystemRows(files: AdvisoriesByEcosystem, malware: NpmMalwareData | null): NpmRow[] {
+  const eco = Object.keys(files) as Ecosystem[];
+  const rows = eco.flatMap((e) => npmRows(files[e] ?? null, e === 'npm' ? malware : null, e));
+  if (!files.npm && malware) rows.push(...npmRows(null, malware).filter((r) => r.kind === 'malware'));
+  return eco.length > 1 ? rows.sort((a, b) => time(b.date) - time(a.date) || a.id.localeCompare(b.id)) : rows;
+}
+
+/** The tab's eco= value: an ecosystem id, anything else reads as All ('') */
+export function ecoFromParam(param: string): Ecosystem | '' {
+  return Object.prototype.hasOwnProperty.call(ECOSYSTEMS, param) ? (param as Ecosystem) : '';
+}
+
+/** The ecosystems whose advisory files the tab needs: All is npm and the watched ones, a pick is that one alone */
+export function ecosToLoad(eco: Ecosystem | '', watched: Ecosystem[]): Ecosystem[] {
+  return eco ? [eco] : ['npm', ...watched.filter((e) => e !== 'npm')];
 }
 
 export function filterNpmRows(rows: NpmRow[], f: NpmFilters, affecting: ReadonlyMap<string, AffectedEntry[]>, now: number): NpmRow[] {
@@ -94,6 +116,7 @@ export function filterNpmRows(rows: NpmRow[], f: NpmFilters, affecting: Readonly
   return rows.filter((r) =>
     time(r.date) >= since &&
     (f.type === 'all' || r.kind === f.type) &&
+    (!f.eco || r.ecosystem === f.eco) &&
     (!f.severity || r.severity === f.severity) &&
     (!f.mine || affecting.has(r.id)) &&
     (!f.fix || r.ranges.some((x) => x.patched)) &&

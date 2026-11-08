@@ -8,7 +8,8 @@ import { countEntitiesByDay, trendsVocab } from '../intelligence/trends';
 import { isLeakSitePost } from '../intelligence/incidents';
 import { cvssBand } from '../intelligence/vulns';
 import type { NpmAdvisory, NpmAdvisoryData, NpmMalwareData } from '../npm/advisories';
-import type { PackageResult } from '../npm/match';
+import type { AdvisoriesByEcosystem, PackageResult } from '../npm/match';
+import { ECOSYSTEMS, type Ecosystem } from '../packages/ecosystems';
 import { shortCwe } from '../tv/dashboard';
 
 /**
@@ -235,6 +236,28 @@ export function npmTopCwes(data: NpmAdvisoryData, now: number, days = 30): Row[]
 export function npmFixShare(data: NpmAdvisoryData, now: number, days = 30): Slice[] {
   const fixed = (a: NpmAdvisory) => a.ranges.length > 0 && a.ranges.every((r) => !!r.patched);
   return slices(tally(liveAdvisories(data, now, days).map(({ item }) => (fixed(item) ? 'Fix available' : 'No fix'))));
+}
+
+/** Live advisories of the window per loaded ecosystem (labels as shown); shares fold like the other donuts */
+export function advisoriesByEcosystem(files: AdvisoriesByEcosystem, now: number, days = 30): Slice[] {
+  return foldSlices((Object.keys(files) as Ecosystem[]).map((eco) => ({
+    label: ECOSYSTEMS[eco].label,
+    value: files[eco] ? liveAdvisories(files[eco]!, now, days).length : 0,
+  })));
+}
+
+/** The loaded files as one dataset for the charts that follow the ecosystem filter; null when none is loaded */
+export function mergeAdvisoryFiles(files: AdvisoriesByEcosystem): NpmAdvisoryData | null {
+  const all = Object.values(files);
+  if (!all.length) return null;
+  if (all.length === 1) return all[0];
+  return {
+    version: 1,
+    generatedAt: [...all.map((f) => f.generatedAt)].sort().pop() ?? '',
+    updatedAt: [...all.map((f) => f.updatedAt)].sort().pop() ?? '',
+    recent: all.flatMap((f) => f.recent),
+    index: all.flatMap((f) => f.index),
+  };
 }
 
 const STATUS_LABEL: Record<PackageResult['status'], string> = {

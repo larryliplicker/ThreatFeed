@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NpmAdvisory, NpmAdvisoryData, NpmMalwareData } from './advisories';
 import type { PackageResult } from './match';
-import { affectingByAdvisory, DEFAULT_NPM_FILTERS, filterNpmRows, npmRows, npmStats, type NpmFilters } from './npmFilters';
+import { affectingByAdvisory, DEFAULT_NPM_FILTERS, ecoFromParam, ecosToLoad, ecosystemRows, filterNpmRows, npmRows, npmStats, type NpmFilters } from './npmFilters';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 const daysAgo = (d: number) => new Date(NOW - d * 24 * 60 * 60 * 1000).toISOString();
@@ -154,5 +154,28 @@ describe('npmStats', () => {
   it('caps the top packages at 5', () => {
     const many = { ...DATA, recent: 'abcdefg'.split('').map(c => advisory(`GHSA-${c.repeat(4)}-0000-0000`, { ranges: [{ package: `pkg-${c}`, vulnerable: '< 1.0.0' }] })) };
     expect(npmStats(npmRows(many, null), NOW).topPackages).toHaveLength(5);
+  });
+});
+
+describe('the ecosystem filter', () => {
+  it('round-trips its eco= value and reads anything else as All', () => {
+    for (const eco of ['npm', 'pypi', 'maven', 'go', 'nuget', 'cargo'] as const) expect(ecoFromParam(eco)).toBe(eco);
+    expect(ecoFromParam('')).toBe('');
+    expect(ecoFromParam('rubygems')).toBe('');
+    expect(ecoFromParam('PYPI')).toBe('');
+  });
+  it('loads the watched ecosystems plus npm for All, and only the picked one otherwise', () => {
+    expect(ecosToLoad('', ['pypi', 'maven'])).toEqual(['npm', 'pypi', 'maven']);
+    expect(ecosToLoad('', [])).toEqual(['npm']);
+    expect(ecosToLoad('go', ['pypi'])).toEqual(['go']);
+    expect(ecosToLoad('npm', ['pypi'])).toEqual(['npm']);
+  });
+  it('lists the rows of every loaded ecosystem with its ecosystem, and filters on it', () => {
+    const py = { ...DATA, recent: [advisory('GHSA-pypy-pypy-pypy', { ranges: [{ package: 'django', vulnerable: '< 3.2.1', patched: '3.2.1' }] })] };
+    const rows = ecosystemRows({ npm: DATA, pypi: py }, null);
+    expect(rows.find(r => r.id === 'GHSA-pypy-pypy-pypy')?.ecosystem).toBe('pypi');
+    expect(rows.find(r => r.id === 'GHSA-aaaa-aaaa-aaaa')?.ecosystem).toBe('npm');
+    const only = filterNpmRows(rows, { ...DEFAULT_NPM_FILTERS, days: 90, eco: 'pypi' }, new Map(), NOW);
+    expect(only.map(r => r.id)).toEqual(['GHSA-pypy-pypy-pypy']);
   });
 });

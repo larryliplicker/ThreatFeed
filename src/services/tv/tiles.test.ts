@@ -150,6 +150,19 @@ describe('tilesForNpm', () => {
   });
   const ids = (tiles: TvTile[]) => tiles.map(t => t.id);
 
+  it('includes a PyPI advisory affecting a watched PyPI package, labelled with its ecosystem', () => {
+    const npmOnly = npmData([adv('GHSA-3333-3333-3333', 'high', 1)]);
+    const py = npmData([adv('GHSA-8888-8888-8888', 'high', 100, { ranges: [{ package: 'django', vulnerable: '< 3.2.5', patched: '3.2.5' }] })]);
+    const results = matchPackages([{ name: 'django', version: '3.2.0', ecosystem: 'pypi' }], { npm: npmOnly, pypi: py }, null);
+    const tiles = tilesForNpm(npmOnly, null, results, NOW, 30, { pypi: py });
+    const tile = tiles.find(t => t.id === 'npm-GHSA-8888-8888-8888');
+    expect(tile?.source).toBe('PyPI advisory');
+    expect(tile?.npm?.yours).toEqual(['django@3.2.0']);
+    expect(tile?.url).toBe('https://github.com/advisories/GHSA-8888-8888-8888');
+    expect(tiles[0].id).toBe('npm-GHSA-8888-8888-8888'); // yours first
+    expect(tiles.find(t => t.id === 'npm-GHSA-3333-3333-3333')?.source).toBe('npm advisory');
+  });
+
   it('shows 7 days of critical and high first, then medium, newest first in each; low and older ones are left out', () => {
     const d = npmData([
       adv('GHSA-2222-2222-2222', 'medium', 1),

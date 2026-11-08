@@ -2,9 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { buildHash, openPanel, useHashParam } from '../../hooks/useHashRoute';
 import type { NpmMatches } from '../../hooks/useNpmMatches';
 import type { NpmAdvisoryData, NpmMalwareData } from '../../services/npm/advisories';
+import type { EcosystemAdvisories } from '../../hooks/useNpmAdvisories';
+import { ECOSYSTEMS, type Ecosystem } from '../../services/packages/ecosystems';
 import { type MatchedAdvisory, type PackageResult, type PackageStatus } from '../../services/npm/match';
 import {
-  DEFAULT_NPM_FILTERS, filterNpmRows, NPM_DAY_RANGES, npmRows, npmStats, type AffectedEntry, type NpmDays, type NpmFilters, type NpmRow,
+  DEFAULT_NPM_FILTERS, ecoFromParam, ecosystemRows, filterNpmRows, NPM_DAY_RANGES, npmStats, type AffectedEntry, type NpmDays, type NpmFilters, type NpmRow,
 } from '../../services/npm/npmFilters';
 import { formatPackageEntry } from '../../services/npm/semver';
 import { usePagedCount } from '../../hooks/usePagedCount';
@@ -15,7 +17,7 @@ import { DonutChart } from '../../components/charts/DonutChart';
 import { NEUTRAL_COLOR, SEVERITY_HEX as SEVERITY_COLORS } from '../../components/charts/colors';
 import { RankedBars } from '../../components/charts/RankedBars';
 import { sliceTotal } from '../../components/charts/chartData';
-import { myPackagesStatus, npmFixShare, npmSeverityShare, npmTopCwes, npmVulnVsMalware } from '../../services/charts/figures';
+import { advisoriesByEcosystem, mergeAdvisoryFiles, myPackagesStatus, npmFixShare, npmSeverityShare, npmTopCwes, npmVulnVsMalware } from '../../services/charts/figures';
 import { CveButton, EpssValue, SEVERITY_FILL, SeverityPill, StatCards } from './shared';
 import { Package, Search, Skull } from 'lucide-react';
 import { TyposquatChip } from '../../components/TyposquatChip';
@@ -40,12 +42,13 @@ const STATUS: Record<PackageStatus, { label: string; className: string; title: s
   affected: { label: 'Affected', className: 'bg-rose-600 text-white border-rose-600', title: 'This version is inside a vulnerable range' },
   unknown: { label: 'Check manually', className: 'text-amber-600 dark:text-amber-400 border-amber-500/50', title: 'A range could not be read, or the version could not: never shown as safe' },
   'no-version': { label: 'No version', className: 'text-orange-500 border-orange-500/50', title: 'No version given, so every advisory on the package is listed' },
-  'not-affected': { label: 'Not affected', className: 'text-emerald-600 dark:text-emerald-400 border-emerald-500/50', title: 'Checked against every reviewed npm advisory' },
+  'not-affected': { label: 'Not affected', className: 'text-emerald-600 dark:text-emerald-400 border-emerald-500/50', title: 'Checked against every reviewed advisory of its ecosystem' },
 };
 // Donut colours by slice label (slices come largest first): severities as in the per-day chart (SEVERITY_FILL),
 // package statuses as their badges
 const SEVERITY_HEX: Record<string, string> = { ...SEVERITY_COLORS, Unknown: NEUTRAL_COLOR };
 const STATUS_HEX: Record<string, string> = { Affected: '#e11d48', 'Check manually': '#f59e0b', 'No version': '#f97316', 'Not affected': '#10b981' };
+const ECO_HEX: Record<string, string> = { npm: '#e11d48', PyPI: '#0ea5e9', Maven: '#f97316', Go: '#10b981', NuGet: '#8b5cf6', 'crates.io': '#f59e0b' };
 const KIND_HEX: Record<string, string> = { Vulnerabilities: '#f59e0b', Malware: '#e11d48', 'Fix available': '#10b981', 'No fix': '#e11d48' };
 const colorsBy = (map: Record<string, string>, slices: { label: string }[]) => slices.map((s) => map[s.label] ?? '#94a3b8');
 const notAffectedTitle = (r: PackageResult) => (r.status === 'not-affected' && r.malwareCheckedDays !== null
@@ -62,6 +65,11 @@ const isGhsa = (id: string) => /^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/.test
 const AdvisoryId: React.FC<{ id: string }> = ({ id }) => (isGhsa(id)
   ? <button onClick={() => openAdvisory(id)} className="font-mono font-bold text-theme-accent hover:underline whitespace-nowrap">{id}</button>
   : <a href={`https://osv.dev/vulnerability/${encodeURIComponent(id)}`} target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-theme-accent hover:underline whitespace-nowrap">{id}</a>);
+
+/** The ecosystem as a small text label, for rows and cards that aren't npm's own */
+const EcoLabel: React.FC<{ eco: Ecosystem }> = ({ eco }) => (
+  <span className="px-1 rounded border border-theme-border text-[9px] font-bold uppercase text-theme-text-muted" title={`${ECOSYSTEMS[eco].label} package`}>{ECOSYSTEMS[eco].label}</span>
+);
 
 const SeverityCounts: React.FC<{ advisories: MatchedAdvisory[] }> = ({ advisories }) => {
   const counts = SEVERITIES.map((s) => [s, advisories.filter((a) => !a.malware && a.severity === s).length] as const).filter(([, n]) => n > 0);
@@ -82,6 +90,7 @@ const PackageCard: React.FC<{ result: PackageResult; osvChecking: boolean }> = (
     <li className={`p-3 rounded-lg border ${r.malware ? 'border-rose-600 bg-rose-600/10' : r.status === 'affected' ? 'border-rose-500/40 bg-rose-500/5' : 'border-theme-border bg-theme-surface'}`}>
       <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
         <span className="font-bold text-theme-text break-all">{formatPackageEntry(r.entry)}</span>
+        {r.ecosystem !== 'npm' && <EcoLabel eco={r.ecosystem} />}
         <span className={`px-1.5 rounded border text-[10px] font-bold uppercase ${status.className}`} title={notAffectedTitle(r)}>{status.label}</span>
         <TyposquatChip eco={r.ecosystem} name={r.entry.name} {...typosquat} />
         {r.malware && <span className="px-1.5 rounded bg-rose-600 text-white text-[10px] font-bold uppercase inline-flex items-center gap-1"><Skull className="w-3 h-3" /> Malware</span>}
@@ -96,7 +105,7 @@ const PackageCard: React.FC<{ result: PackageResult; osvChecking: boolean }> = (
         {hasAdvisories && r.status !== 'no-version' && (r.minSafeVersion
           ? <span>upgrade to <strong className="text-emerald-600 dark:text-emerald-400">{r.minSafeVersion}</strong></span>
           : <span className="text-orange-500">no version clear of all yet</span>)}
-        <span>{r.malwareCheckedDays === null ? 'malware list not loaded' : `malware checked: last ${r.malwareCheckedDays} days`}</span>
+        {r.ecosystem === 'npm' && <span>{r.malwareCheckedDays === null ? 'malware list not loaded' : `malware checked: last ${r.malwareCheckedDays} days`}</span>}
         <span>{osvLabel(r, osvChecking)}</span>
       </p>
       {r.malware && (
@@ -160,12 +169,13 @@ interface NpmTabProps {
   advisories: NpmAdvisoryData;
   malware: NpmMalwareData | null;
   matches: NpmMatches;
+  files: EcosystemAdvisories; // the advisory files of the ecosystems the filter asks for
   onOpenCve: (cve: string) => void;
 }
 
 /** npm advisories from GitHub: your packages' status, the last 90 days of advisories and the malicious releases */
-export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, onOpenCve }) => {
-  const { entries, results, affecting, osvChecking } = matches;
+export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, files, onOpenCve }) => {
+  const { entries, results, affecting, osvChecking, ecoData } = matches;
   // Filters live in the URL (#/vulns/npm?type=malware&only=fix,kev) like the other tabs; ?advisory= is the panel
   const [daysParam, setDaysParam] = useHashParam('days', String(DEFAULT_NPM_FILTERS.days));
   const [typeParam, setType] = useHashParam('type', DEFAULT_NPM_FILTERS.type);
@@ -173,6 +183,10 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
   const [query, setQuery] = useHashParam('q');
   const [pkg, setPkg] = useHashParam('package');
   const [flagsParam, setFlagsParam] = useHashParam('only');
+  const [ecoParam, setEco] = useHashParam('eco');
+  const eco = ecoFromParam(ecoParam);
+  // Malware reports are npm's: they only apply to All and npm
+  const malwareApplies = eco === '' || eco === 'npm';
   const flags = new Set(flagsParam.split(',').filter(Boolean));
   const toggleFlag = (flag: string) => {
     const next = new Set(flags);
@@ -183,7 +197,7 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
 
   const filters: NpmFilters = {
     days: (NPM_DAY_RANGES as readonly number[]).includes(Number(daysParam)) ? (Number(daysParam) as NpmDays) : DEFAULT_NPM_FILTERS.days,
-    type: TYPES.some((t) => t.id === typeParam) ? (typeParam as NpmFilters['type']) : DEFAULT_NPM_FILTERS.type,
+    type: malwareApplies && TYPES.some((t) => t.id === typeParam) ? (typeParam as NpmFilters['type']) : DEFAULT_NPM_FILTERS.type,
     severity: (SEVERITIES as readonly string[]).includes(severityParam) ? severityParam : '',
     mine: flags.has('mine') && entries.length > 0, // a shared link's filter means nothing without a list
     fix: flags.has('fix'),
@@ -191,14 +205,21 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
     cve: flags.has('cve'),
     query,
     pkg,
+    eco,
   };
 
   const [now] = useState(() => Date.now());
-  const rows = useMemo(() => npmRows(advisories, malware), [advisories, malware]);
+  const shownMalware = malwareApplies ? malware : null;
+  const rows = useMemo(() => ecosystemRows(files.data, shownMalware), [files.data, shownMalware]);
+  const loadedEcos = Object.keys(files.data) as Ecosystem[];
+  const multi = loadedEcos.length > 1;
+  const scope = eco ? ECOSYSTEMS[eco].label : multi ? 'Package' : 'npm';
+  const missing = eco && !files.data[eco] ? (files.failed.includes(eco) ? 'failed' : 'loading') : null;
+  const failedLabels = files.failed.map((e) => ECOSYSTEMS[e].label);
   const stats = useMemo(() => npmStats(rows, now), [rows, now]);
   const filtered = useMemo(
     () => filterNpmRows(rows, filters, affecting, now),
-    [rows, affecting, now, filters.days, filters.type, filters.severity, flagsParam, query, pkg] // eslint-disable-line react-hooks/exhaustive-deps
+    [rows, affecting, now, filters.days, filters.type, filters.severity, flagsParam, query, pkg, eco] // eslint-disable-line react-hooks/exhaustive-deps
   );
   const { visibleCount, hasMore, remaining, showMore } = usePagedCount(filtered.length, 50);
 
@@ -215,21 +236,27 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
     return buckets;
   }, [rows, now]);
 
-  const severityShare = useMemo(() => npmSeverityShare(advisories, now), [advisories, now]);
-  const vulnVsMalware = useMemo(() => npmVulnVsMalware(advisories, malware, now), [advisories, malware, now]);
-  const fixShare = useMemo(() => npmFixShare(advisories, now), [advisories, now]);
-  const topCwes = useMemo(() => npmTopCwes(advisories, now), [advisories, now]);
+  // The charts follow the ecosystem filter: they cover the loaded files (the malware reports only where they apply)
+  const merged = useMemo(() => mergeAdvisoryFiles(files.data) ?? { ...advisories, recent: [], index: [] }, [files.data, advisories]);
+  const severityShare = useMemo(() => npmSeverityShare(merged, now), [merged, now]);
+  const vulnVsMalware = useMemo(() => npmVulnVsMalware(merged, shownMalware, now), [merged, shownMalware, now]);
+  const fixShare = useMemo(() => npmFixShare(merged, now), [merged, now]);
+  const topCwes = useMemo(() => npmTopCwes(merged, now), [merged, now]);
+  const byEcosystem = useMemo(() => advisoriesByEcosystem(files.data, now), [files.data, now]);
   const packagesStatus = useMemo(() => myPackagesStatus(results), [results]);
 
   // Malicious releases, the ones your packages are in first
   const yourMalware = results.filter((r) => r.malware);
   const recentMalware = useMemo(() => rows.filter((r) => r.kind === 'malware'), [rows]);
+  // Matching covered each result's own ecosystem: the count is of the files those results were checked against
+  const checkedEcos = [...new Set(results.map((r) => r.ecosystem))];
+  const checkedAgainst = checkedEcos.reduce((n, e) => n + ((e === 'npm' ? advisories : ecoData[e])?.index.length ?? 0), 0);
   const affected = results.filter((r) => r.status === 'affected' || r.malware).length;
 
   return (
     <div className="space-y-6">
       <div>
-        <p className="mb-2 text-[10px] font-mono text-theme-text-muted">Data from {formatRelativeTime(advisories.generatedAt)}</p>
+        <p className="mb-2 text-[10px] font-mono text-theme-text-muted">Data from {formatRelativeTime(merged.generatedAt || advisories.generatedAt)}</p>
         <SectionTitle>My packages{entries.length ? ` (${entries.length})` : ''}</SectionTitle>
         {entries.length === 0 ? (
           <p className="text-sm font-serif text-theme-text-muted">
@@ -240,7 +267,7 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
           <>
             <p className="mb-3 text-[11px] font-mono text-theme-text-muted">
               {results.length
-                ? <>{affected} of {results.length} need attention · checked against {advisories.index.length.toLocaleString()} reviewed advisories{malware ? ' and 30 days of malware reports' : ''} on this device · <a href={buildHash('settings', 'npm')} className="underline">edit the list</a></>
+                ? <>{affected} of {results.length} need attention · checked against {checkedAgainst.toLocaleString()} reviewed advisories{malware && checkedEcos.includes('npm') ? ' and 30 days of malware reports' : ''} on this device · <a href={buildHash('settings', 'npm')} className="underline">edit the list</a></>
                 : 'Matching…'}
             </p>
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -258,9 +285,9 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
       ]} />
 
       <div className="p-4 rounded-lg bg-theme-surface border border-theme-border">
-        <SectionTitle>npm advisories per day, by severity (30 days)</SectionTitle>
+        <SectionTitle>{scope} advisories per day, by severity (30 days)</SectionTitle>
         <StackedBars
-          ariaLabel="npm advisories published or updated per day"
+          ariaLabel={`${scope} advisories published or updated per day`}
           unit="advisories"
           buckets={perDay.map((d) => ({
             label: d.date,
@@ -272,31 +299,27 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         <ChartCard title="By severity (30 days)">
-          <DonutChart title="npm advisories by severity, last 30 days" data={severityShare} centerLabel={sliceTotal(severityShare)} colors={colorsBy(SEVERITY_HEX, severityShare)} />
+          <DonutChart title={`${scope} advisories by severity, last 30 days`} data={severityShare} centerLabel={sliceTotal(severityShare)} colors={colorsBy(SEVERITY_HEX, severityShare)} />
         </ChartCard>
         <ChartCard title="Vulnerabilities vs malware (7 days)" note="Advisories published or updated, and malicious-release reports">
-          <DonutChart title="npm vulnerability advisories versus malware reports, last 7 days" data={vulnVsMalware} centerLabel={sliceTotal(vulnVsMalware)} colors={colorsBy(KIND_HEX, vulnVsMalware)} />
+          <DonutChart title={`${scope} vulnerability advisories versus malware reports, last 7 days`} data={vulnVsMalware} centerLabel={sliceTotal(vulnVsMalware)} colors={colorsBy(KIND_HEX, vulnVsMalware)} />
         </ChartCard>
         <ChartCard title="Fix available (30 days)" note="A fix means every affected range has a patched version">
-          <DonutChart title="npm advisories with a fix, last 30 days" data={fixShare} centerLabel={sliceTotal(fixShare)} colors={colorsBy(KIND_HEX, fixShare)} />
+          <DonutChart title={`${scope} advisories with a fix, last 30 days`} data={fixShare} centerLabel={sliceTotal(fixShare)} colors={colorsBy(KIND_HEX, fixShare)} />
         </ChartCard>
-        <ChartCard title="Top weaknesses (30 days)">
-          <RankedBars title="Most common weaknesses (CWE) in npm advisories, last 30 days" data={topCwes} color="fill-sky-500" />
-        </ChartCard>
-        {packagesStatus.length > 0 && (
-          <ChartCard title={`My packages (${results.length})`}>
-            <DonutChart title="My npm packages by status" data={packagesStatus} centerLabel={sliceTotal(packagesStatus)} colors={colorsBy(STATUS_HEX, packagesStatus)} />
-          </ChartCard>
-        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         {NPM_DAY_RANGES.map((d) => <button key={d} onClick={() => setDaysParam(String(d))} className={chipClass(filters.days === d)}>{d} days</button>)}
         <span className="mx-1 text-theme-border">|</span>
-        {TYPES.map((t) => <button key={t.id} onClick={() => setType(t.id)} className={chipClass(filters.type === t.id)}>{t.label}</button>)}
+        {malwareApplies && TYPES.map((t) => <button key={t.id} onClick={() => setType(t.id)} className={chipClass(filters.type === t.id)}>{t.label}</button>)}
+        <select value={eco} onChange={(e) => setEco(e.target.value)} aria-label="Ecosystem" className="bg-theme-card border border-theme-border rounded px-2 py-1.5 text-xs font-mono text-theme-text focus:outline-none">
+          <option value="">All ecosystems</option>
+          {(Object.keys(ECOSYSTEMS) as Ecosystem[]).map((e) => <option key={e} value={e}>{ECOSYSTEMS[e].label}</option>)}
+        </select>
         <label className="flex items-center gap-1.5 bg-theme-card border border-theme-border rounded px-2 py-1.5 text-xs">
           <Search className="w-3.5 h-3.5 text-theme-text-muted" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Package, GHSA, CVE…" aria-label="Search npm advisories" className="bg-transparent font-mono text-theme-text focus:outline-none w-36" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Package, GHSA, CVE…" aria-label="Search advisories" className="bg-transparent font-mono text-theme-text focus:outline-none w-36" />
         </label>
       </div>
 
@@ -316,20 +339,39 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
             <BarList color="bg-amber-500/70" rows={stats.topPackages.map(([p, n]) => ({ key: p, label: p, value: n, active: pkg === p, onClick: () => setPkg(pkg === p ? '' : p) }))} />
             {stats.topPackages.length === 0 && <p className="text-xs font-serif italic text-theme-text-muted">None in 30 days.</p>}
           </div>
+          <div>
+            <SectionTitle>Top weaknesses (30 days)</SectionTitle>
+            <RankedBars title={`Most common weaknesses (CWE) in ${scope} advisories, last 30 days`} data={topCwes} color="fill-sky-500" />
+          </div>
+          {byEcosystem.length > 1 && (
+            <div>
+              <SectionTitle>Advisories by ecosystem (30 days)</SectionTitle>
+              <DonutChart title="Advisories by ecosystem, last 30 days" data={byEcosystem} centerLabel={sliceTotal(byEcosystem)} colors={colorsBy(ECO_HEX, byEcosystem)} />
+            </div>
+          )}
+          {packagesStatus.length > 0 && (
+            <div>
+              <SectionTitle>{`My packages (${results.length})`}</SectionTitle>
+              <DonutChart title="My packages by status" data={packagesStatus} centerLabel={sliceTotal(packagesStatus)} colors={colorsBy(STATUS_HEX, packagesStatus)} />
+            </div>
+          )}
           <p className="text-[10px] font-mono text-theme-text-muted">Click a package to filter the list; click it again to clear. Rows that affect your packages are highlighted.</p>
         </aside>
 
         <div className="lg:col-span-3 overflow-x-auto">
           <p className="mb-2 text-[11px] font-mono text-theme-text-muted">{filtered.length.toLocaleString()} {filtered.length === 1 ? 'advisory' : 'advisories'}</p>
+          {missing && <p className="mb-2 text-xs font-serif italic text-theme-text-muted">{missing === 'failed' ? `No data for ${ECOSYSTEMS[eco as Ecosystem].label} right now: its advisory file couldn't be loaded.` : `Loading the ${ECOSYSTEMS[eco as Ecosystem].label} advisories…`}</p>}
+          {!eco && failedLabels.length > 0 && <p className="mb-2 text-xs font-serif italic text-theme-text-muted">No data for {failedLabels.join(', ')} right now: the advisory file couldn't be loaded.</p>}
           {/* Phones get cards; the table needs more width than a phone has */}
           <ul className="md:hidden divide-y divide-theme-border/60 text-xs">
             {filtered.slice(0, visibleCount).map((r) => {
               const hits = affecting.get(r.id);
               return (
-                <li key={r.id} className={`py-2.5 space-y-1 ${hits ? 'bg-rose-500/10 -mx-2 px-2' : ''} ${r.withdrawn ? 'opacity-60' : ''}`}>
+                <li key={`${r.ecosystem}:${r.id}`} className={`py-2.5 space-y-1 ${hits ? 'bg-rose-500/10 -mx-2 px-2' : ''} ${r.withdrawn ? 'opacity-60' : ''}`}>
                   <div className="flex flex-wrap items-center gap-2 font-mono">
                     <SeverityPill severity={r.severity === 'unknown' ? undefined : r.severity} />
                     <span className="text-theme-text break-all">{r.packages.join(', ')}</span>
+                    {multi && <EcoLabel eco={r.ecosystem} />}
                     <Badges row={r} />
                   </div>
                   <p className={`font-serif text-theme-text ${r.withdrawn ? 'line-through' : ''}`}>{r.summary}</p>
@@ -359,13 +401,13 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
               {filtered.slice(0, visibleCount).map((r) => {
                 const hits = affecting.get(r.id);
                 return (
-                  <tr key={r.id} className={`align-top ${hits ? 'bg-rose-500/10' : ''} ${r.withdrawn ? 'opacity-60' : ''}`}>
+                  <tr key={`${r.ecosystem}:${r.id}`} className={`align-top ${hits ? 'bg-rose-500/10' : ''} ${r.withdrawn ? 'opacity-60' : ''}`}>
                     <td className="py-2 pr-3 whitespace-nowrap text-theme-text-muted" title={r.date !== r.published ? `published ${r.published.slice(0, 10)}` : undefined}>
                       {r.date.slice(0, 10)}
                       {r.date.slice(0, 10) !== r.published.slice(0, 10) && <span className="block text-[10px]">updated</span>}
                     </td>
                     <td className="py-2 pr-3"><SeverityPill severity={r.severity === 'unknown' ? undefined : r.severity} /></td>
-                    <td className="py-2 pr-3 text-theme-text max-w-[12rem] break-words">{r.packages.join(', ')}</td>
+                    <td className="py-2 pr-3 text-theme-text max-w-[12rem] break-words">{r.packages.join(', ')}{multi && <span className="block mt-0.5"><EcoLabel eco={r.ecosystem} /></span>}</td>
                     <td className="py-2 pr-3">
                       <span className={`font-serif text-theme-text ${r.withdrawn ? 'line-through' : ''}`}>{r.summary}</span>
                       <span className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[10px]">
@@ -382,12 +424,12 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
               })}
             </tbody>
           </table>
-          {filtered.length === 0 && <p className="py-6 text-xs font-serif italic text-theme-text-muted">No npm advisories match these filters.</p>}
+          {filtered.length === 0 && <p className="py-6 text-xs font-serif italic text-theme-text-muted">No advisories match these filters.</p>}
           {hasMore && <LoadMoreButton remaining={remaining} onClick={showMore} />}
         </div>
       </div>
 
-      <div>
+      {malwareApplies && <div>
         <SectionTitle>Malicious releases (last 30 days)</SectionTitle>
         <p className="mb-3 text-xs font-serif text-theme-text-muted">
           Packages GitHub found publishing malicious code, often typosquats or hijacked releases whose install scripts steal credentials. Installing one means the machine should be treated as compromised.
@@ -419,10 +461,10 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, on
             All {recentMalware.length.toLocaleString()} in the list above
           </button>
         )}
-      </div>
+      </div>}
 
       <p className="text-[11px] font-serif text-theme-text-muted">
-        Reviewed npm advisories from the <a href="https://github.com/advisories?query=ecosystem%3Anpm" target="_blank" rel="noopener noreferrer" className="underline">GitHub Advisory Database</a>, refreshed with the site snapshot: the list holds advisories published or updated in the last 90 days, and your packages are checked against every reviewed npm advisory.
+        Reviewed advisories from the <a href="https://github.com/advisories?query=type%3Areviewed" target="_blank" rel="noopener noreferrer" className="underline">GitHub Advisory Database</a>, refreshed with the site snapshot: the list holds advisories published or updated in the last 90 days, and your packages are checked against every reviewed advisory of their ecosystem.
         Your package list stays on this device unless you turn on the OSV.dev check in Settings.
       </p>
     </div>

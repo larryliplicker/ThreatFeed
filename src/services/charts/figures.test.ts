@@ -4,7 +4,7 @@ import type { NpmAdvisory, NpmAdvisoryData, NpmMalwareData } from '../npm/adviso
 import type { PackageResult } from '../npm/match';
 import {
   criticalPerDayByCweFamily, epssHistogram, kevByVendor, malwarePerDay, myPackagesStatus, newestCriticalNpm,
-  npmFixShare, npmPerDayBySeverity, npmSeverityShare, npmTopCwes, npmTopPackages, npmVulnVsMalware, storiesByCategory,
+  advisoriesByEcosystem, npmFixShare, npmPerDayBySeverity, npmSeverityShare, npmTopCwes, npmTopPackages, npmVulnVsMalware, storiesByCategory,
   storiesPerDayBySeverity, topVendorsThisWeek, victimsBySector, victimsPerDayTopGroups, groupShare,
 } from './figures';
 
@@ -266,5 +266,27 @@ describe('local day boundary', () => {
     expect(npmPerDayBySeverity(data, now, 1)[0].segments.every((x) => x.value === 0)).toBe(true);
     expect(npmVulnVsMalware(data, null, now, 1)).toEqual([]);
     expect(npmPerDayBySeverity(data, now, 2)[0].segments.find((x) => x.name === 'High')?.value).toBe(1);
+  });
+});
+
+describe('advisoriesByEcosystem', () => {
+  it('counts the live advisories of the window per loaded ecosystem; shares sum to 100', () => {
+    const files = {
+      npm: npm([adv('N1', 'high', iso(11, 5)), adv('N2', 'high', iso(11, 4)), adv('N3', 'high', iso(11, 4), { withdrawn: iso(11, 5) })]),
+      pypi: npm([adv('P1', 'low', iso(11, 3))]),
+      maven: npm([adv('M1', 'low', iso(10, 6))]), // outside the window
+    };
+    const s = advisoriesByEcosystem(files, NOW);
+    expect(s).toEqual([{ label: 'npm', value: 2, pct: 67 }, { label: 'PyPI', value: 1, pct: 33 }]);
+    expect(s.reduce((n, x) => n + x.pct, 0)).toBe(100);
+  });
+  it('folds the tail like the other donuts', () => {
+    const one = npm([adv('X', 'low', iso(11, 5))]);
+    const s = advisoriesByEcosystem({ npm: one, pypi: one, maven: one, go: one, nuget: one, cargo: one }, NOW);
+    expect(s.reduce((n, x) => n + x.pct, 0)).toBe(100);
+    expect(s).toHaveLength(6);
+  });
+  it('is empty without data', () => {
+    expect(advisoriesByEcosystem({}, NOW)).toEqual([]);
   });
 });

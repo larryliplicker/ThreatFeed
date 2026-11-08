@@ -66,12 +66,12 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
   // npm advisories: the npm wall's tiles, and in mixed mode a share of the story pool; loaded only for those
   const npmWall = page === 'vulnerabilities' && sub === 'npm';
   const { advisories: npmData, malware: npmMalware } = useNpmAdvisories(npmWall || mixed);
-  const { results: npmResults } = useNpmMatches(npmData, npmMalware); // asks OSV only when that setting is on
+  const { results: npmResults, ecoData: npmOthers } = useNpmMatches(npmData, npmMalware); // asks OSV only when that setting is on
   // The OSV answer arrives as a change of the results: null until one has come (always null with OSV off)
   const npmOsvAnswered = npmResults.some(r => r.osv === 'checked') || null;
 
   // The wall rebuilds on its own schedule (refills, data signature); it reads the latest data through this ref
-  const latest = { page, npmWall, articles, feeds, cveIntel, incidents, vulns, victims, settings, mixed, msrc, stats, npmData, npmMalware, npmResults };
+  const latest = { page, npmWall, articles, feeds, cveIntel, incidents, vulns, victims, settings, mixed, msrc, stats, npmData, npmMalware, npmResults, npmOthers };
   const ref = useRef(latest);
   ref.current = latest;
   // Tile content by id: the latest build's tiles, plus kept ones the live wall still references that it lacks
@@ -89,7 +89,7 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
 
   const pageTiles = (now: number): TvTile[] => {
     const d = ref.current;
-    if (d.npmWall) return d.npmData ? tilesForNpm(d.npmData, d.npmMalware, d.npmResults, now) : [];
+    if (d.npmWall) return d.npmData ? tilesForNpm(d.npmData, d.npmMalware, d.npmResults, now, undefined, d.npmOthers) : [];
     if (d.page === 'newspaper') {
       const shown = frontWallStories(d.articles, d.feeds, d.settings);
       return tilesForFront(shown, d.settings.stackKeywords, now);
@@ -110,7 +110,7 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
   const buildParts = (): { main: TvTile[]; npm: TvTile[] } => {
     const d = ref.current;
     const now = Date.now();
-    const npm = d.mixed && d.npmData ? npmTilesForMix(d.npmData, d.npmMalware, d.npmResults, now) : [];
+    const npm = d.mixed && d.npmData ? npmTilesForMix(d.npmData, d.npmMalware, d.npmResults, now, undefined, d.npmOthers) : [];
     return { main: pageTiles(now), npm };
   };
   const build = (): TvTile[] => {
@@ -136,7 +136,7 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
     size,
     tv.intervalSeconds * 1000,
     {
-      signature: `${page}|${sub}|${mixed ? `mix|${msrc ? 'm' : '-'}|${stats ? 's' : '-'}|` : ''}${npmData ? 'n' : '-'}|${npmMalware ? 'w' : '-'}|${npmResults.length}|${articles.length}|${vulns ? 'v' : '-'}|${victims.length}|${Object.keys(cveIntel ?? {}).length}|${incidents ? 'i' : '-'}`,
+      signature: `${page}|${sub}|${mixed ? `mix|${msrc ? 'm' : '-'}|${stats ? 's' : '-'}|` : ''}${npmData ? 'n' : '-'}|${npmMalware ? 'w' : '-'}|${npmResults.length}|${Object.keys(npmOthers).join('+')}|${articles.length}|${vulns ? 'v' : '-'}|${victims.length}|${Object.keys(cveIntel ?? {}).length}|${incidents ? 'i' : '-'}`,
       outMs: wallOutMs(reduced, tv.transition, tv.speed),
     }
   );
@@ -145,9 +145,9 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
   // wall started jump the queue
   useBreakingDetection(news, {
     page,
-    data: [articles, vulns, cveIntel, victims, incidents, npmData, npmMalware, npmResults],
+    data: [articles, vulns, cveIntel, victims, incidents, npmData, npmMalware, npmResults, npmOthers],
     // The npm data loads on demand, after the wall has settled: each source's first load is starting data, not news
-    baseline: [npmData, npmMalware, npmOsvAnswered],
+    baseline: [npmData, npmMalware, npmOsvAnswered, Object.keys(npmOthers).length || null],
     synced: initialSyncDone,
     build,
     kevAdded: () => kevAddedMap(ref.current.vulns, ref.current.cveIntel),
