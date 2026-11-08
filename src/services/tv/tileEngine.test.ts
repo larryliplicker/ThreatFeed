@@ -491,4 +491,41 @@ describe('planManualSwap', () => {
     const slot = s.slots.find(t => t.w === 1)!;
     expect(planSwap(s, slot.key, 1000, MIN, rng).arriving.map(t => t.itemId)).toEqual([slot.itemId]);
   });
+
+  it('at minimum density a clicked single trades places with a wide neighbour: a new chart covers its cell', () => {
+    const items: EngineItem[] = [
+      ...Array.from({ length: 4 }, (_, i): EngineItem => ({ id: `n${i}`, weight: 1, shapes: ['1x1'] })),
+      ...Array.from({ length: 17 }, (_, i): EngineItem => ({ id: `c${i}`, weight: 1, shapes: ['2x1', '2x2'] })),
+    ];
+    const rng = mulberry32(9);
+    const base = initWall(items, 'xsmall', 0, MIN, rng);
+    // 12 tiles: each of the 4 rows is [single, wide, wide]
+    const slots: Slot[] = [];
+    for (let row = 0; row < 4; row++) {
+      const mk = (itemId: string, col: number, w: 1 | 2): Slot => ({ ...base.slots[0], key: `${itemId}#${row}-${col}`, itemId, col, row, w, h: 1, order: slots.length, dueAt: 100000 + slots.length });
+      slots.push(mk(`n${row}`, 0, 1), mk(`c${row * 2}`, 1, 2), mk(`c${row * 2 + 1}`, 3, 2));
+    }
+    let s: WallState = { ...base, slots, queue: base.queue.map(q => ({ ...q, used: slots.some(t => t.itemId === q.item.id) })), seq: 100 };
+    s.cursor = s.queue.findIndex(q => !q.used);
+    expect(s.slots.length).toBe(GRIDS.xsmall.min);
+    const clicked = s.slots[3]; // n1, row 1
+    const swap = planManualSwap(s, clicked.key, 1000, MIN, rng);
+    const chart = swap.arriving.find(t => t.w === 2)!;
+    const single = swap.arriving.find(t => t.w === 1)!;
+    expect(swap.leaving.sort()).toEqual([clicked.key, s.slots[4].key].sort());
+    expect(chart).toMatchObject({ col: 0, row: 1, w: 2, h: 1 });
+    expect(chart.itemId).not.toBe(s.slots[4].itemId);
+    expect(s.slots.some(t => t.itemId === chart.itemId)).toBe(false);
+    expect(single).toMatchObject({ itemId: 'n1', col: 2, row: 1 }); // the number panel moves to the far end
+    s = applySwap(s, swap);
+    expectCovered(s);
+    expectDistinct(s);
+    for (let k = 0; k < 30; k++) {
+      const due = nextDue(s)!;
+      s = applySwap(s, planSwap(s, due.key, due.dueAt, MIN, rng));
+      if (s.cursor >= s.queue.length) s = refill(s, items, due.dueAt, MIN, rng);
+      expectCovered(s);
+      expectDistinct(s);
+    }
+  });
 });

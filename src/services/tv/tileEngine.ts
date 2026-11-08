@@ -330,7 +330,33 @@ export function planManualSwap(state: WallState, slotKey: string, now: number, i
     const order = c.rects.map((_, i) => i).sort((a, b) => readingOrder(c.rects[a], c.rects[b]));
     return { leaving: c.leaving.map(t => t.key), arriving: order.map((i, n) => arrive(c.rects[i], c.picks[i], n)) };
   }
-  return normal;
+  return swapPlaces(state, slot, now, intervalMs, rng, anyPicks) ?? normal;
+}
+
+/**
+ * Last resort for a clicked single (no number panel is off screen and no merge or split is possible, as at a wall's
+ * minimum density): the single trades places with a wide neighbour in its row. A new chart covers the clicked cell and
+ * the next one, and the single moves to the far end of the three cells; the old neighbour leaves.
+ */
+function swapPlaces(state: WallState, slot: Slot, now: number, intervalMs: number, rng: Rng, anyPicks: (rects: Rect[]) => number[] | null): Swap | null {
+  if (slot.w !== 1 || slot.h !== 1 || !GRIDS[state.size].shapes.includes('2x1')) return null;
+  const options = state.slots.flatMap(mate => {
+    if (mate.w !== 2 || mate.h !== 1 || mate.row !== slot.row) return [];
+    if (mate.col === slot.col + 1) return [{ mate, chart: { col: slot.col, row: slot.row, w: 2, h: 1 }, single: { col: slot.col + 2, row: slot.row, w: 1, h: 1 } }];
+    if (mate.col === slot.col - 2) return [{ mate, chart: { col: slot.col - 1, row: slot.row, w: 2, h: 1 }, single: { col: slot.col - 2, row: slot.row, w: 1, h: 1 } }];
+    return [];
+  });
+  const found = options.flatMap(o => {
+    const picks = anyPicks([o.chart]);
+    return picks ? [{ ...o, i: picks[0] }] : [];
+  });
+  if (!found.length) return null;
+  const o = found[Math.min(found.length - 1, Math.floor(rng() * found.length))];
+  const q = state.queue[o.i];
+  const chart = makeSlot(o.chart, q.item.id, state.seq, state.cycle, q.page, state.pageCount, now, intervalMs, rng, 0);
+  const single = makeSlot(o.single, slot.itemId, state.seq + 1, slot.cycle, slot.page, slot.pageCount, now, intervalMs, rng, 1);
+  const arriving = [chart, single].sort(readingOrder).map((t, n) => ({ ...t, order: n }));
+  return { leaving: [slot.key, o.mate.key], arriving };
 }
 
 /**
