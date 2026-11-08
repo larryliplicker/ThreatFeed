@@ -303,7 +303,7 @@ describe('matchedVulnCves', () => {
 describe('alertSettingsFrom', () => {
   const now = new Date('2026-10-30T12:00:00Z');
   const memory = {
-    alertRules: createBuiltInRules(false, now), watchlistKeywords: ['a'], stackKeywords: ['b'], watchedCves: ['CVE-1'], alertGapHours: 1, npmPackages: ['lodash@4.17.15'],
+    alertRules: createBuiltInRules(false, now), watchlistKeywords: ['a'], stackKeywords: ['b'], watchedCves: ['CVE-1'], alertGapHours: 1, npmPackages: ['lodash@4.17.15'], ecosystemPackages: ['pypi:django@3.2.0'],
   };
 
   it('prefers what another tab saved, so the alert tab runs current rules and lists', () => {
@@ -312,10 +312,11 @@ describe('alertSettingsFrom', () => {
     };
     const out = alertSettingsFrom(memory, {
       alertRules: [custom], watchlistKeywords: ['x'], stackKeywords: [], watchedCves: ['CVE-2'], alertGapHours: 6, npmPackages: ['react'],
+      ecosystemPackages: ['maven:org.example:lib@1.0', 'not valid here', 'lodash'],
     }, now);
     expect(out.alertRules.map(r => r.id)).toContain('c1');
     expect(out.alertRules.filter(r => r.builtIn)).toHaveLength(5);
-    expect(out).toMatchObject({ watchlistKeywords: ['x'], stackKeywords: [], watchedCves: ['CVE-2'], alertGapHours: 6, npmPackages: ['react'] });
+    expect(out).toMatchObject({ watchlistKeywords: ['x'], stackKeywords: [], watchedCves: ['CVE-2'], alertGapHours: 6, npmPackages: ['react'], ecosystemPackages: ['maven:org.example:lib@1.0'] });
   });
 
   it('falls back to memory for anything missing or malformed', () => {

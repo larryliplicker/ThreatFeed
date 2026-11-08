@@ -7,13 +7,29 @@ import { getSettingsFromDB } from '../services/storage/indexeddb';
 import { loadAlertStore, saveAlertStore } from '../services/intelligence/alertStore';
 import { fetchEpssScores } from '../services/intelligence/cveWatch';
 import { notificationsSupported, notifyAlertMatches } from '../services/notifications';
+import { parseEntry } from '../services/packages/entries';
+import type { Ecosystem } from '../services/packages/ecosystems';
+
+type OtherEcosystem = Exclude<Ecosystem, 'npm'>;
 
 const CHECK_INTERVAL_MS = 5 * 60_000; // sends matches held by the gap once it ends, even with auto-refresh off
 const LEADER_LOCK = 'threatfeed-alerts';
 
-/** The npm advisory files are only loaded for an enabled "My npm packages" rule with packages to match */
-const needsNpmData = (s: Pick<AlertSettings, 'alertRules' | 'npmPackages'>) =>
-  s.npmPackages.length > 0 && s.alertRules.some(r => r.builtIn === NPM_RULE_ID && r.enabled);
+const packagesRuleOn = (s: Pick<AlertSettings, 'alertRules'>) => s.alertRules.some(r => r.builtIn === NPM_RULE_ID && r.enabled);
+
+/** The npm advisory files are only loaded for an enabled "My packages" rule with npm packages to match */
+const needsNpmData = (s: Pick<AlertSettings, 'alertRules' | 'npmPackages'>) => s.npmPackages.length > 0 && packagesRuleOn(s);
+
+/** The other ecosystems whose files the "My packages" rule needs: those with a watched package, none when it is off */
+function watchedEcosystems(s: Pick<AlertSettings, 'alertRules' | 'ecosystemPackages'>): OtherEcosystem[] {
+  if (!packagesRuleOn(s)) return [];
+  const ecos = new Set<OtherEcosystem>();
+  for (const raw of s.ecosystemPackages ?? []) {
+    const e = parseEntry(raw);
+    if (e && e.ecosystem !== 'npm') ecos.add(e.ecosystem);
+  }
+  return [...ecos].sort();
+}
 
 const locksSupported = () => typeof navigator !== 'undefined' && 'locks' in navigator && !!navigator.locks;
 
@@ -27,11 +43,12 @@ const locksSupported = () => typeof navigator !== 'undefined' && 'locks' in navi
  */
 export function AlertMonitor(): null {
   const {
-    feeds, articles, cveIntel, vulns, ensureVulns, npmAdvisories, ensureNpmAdvisories, npmMalware, ensureNpmMalware, snapshotGeneratedAt, isRefreshing, initialSyncDone,
+    feeds, articles, cveIntel, vulns, ensureVulns, npmAdvisories, ensureNpmAdvisories, npmMalware, ensureNpmMalware,
+    ecosystemAdvisories, ensureEcosystemAdvisories, snapshotGeneratedAt, isRefreshing, initialSyncDone,
   } = useFeeds();
   const { settings } = useSettings();
-  const latest = useRef({ feeds, articles, cveIntel, vulns, npmAdvisories, npmMalware, settings, initialSyncDone });
-  latest.current = { feeds, articles, cveIntel, vulns, npmAdvisories, npmMalware, settings, initialSyncDone };
+  const latest = useRef({ feeds, articles, cveIntel, vulns, npmAdvisories, npmMalware, ecosystemAdvisories, settings, initialSyncDone });
+  latest.current = { feeds, articles, cveIntel, vulns, npmAdvisories, npmMalware, ecosystemAdvisories, settings, initialSyncDone };
   const running = useRef(false);
   const rerun = useRef(false);
   const [isLeader, setIsLeader] = useState(() => !locksSupported());
@@ -70,6 +87,12 @@ export function AlertMonitor(): null {
     void ensureNpmMalware();
   }, [needsNpm, ensureNpmAdvisories, ensureNpmMalware, snapshotGeneratedAt]);
 
+  // Each other ecosystem's file only while a package in it is watched (never for an npm-only list)
+  const ecosKey = watchedEcosystems(settings).join(',');
+  useEffect(() => {
+    for (const eco of ecosKey ? (ecosKey.split(',') as OtherEcosystem[]) : []) void ensureEcosystemAdvisories(eco);
+  }, [ecosKey, ensureEcosystemAdvisories, snapshotGeneratedAt]);
+
   const check = async () => {
     // Before the stored data and first refresh have landed, articles/vulns are partial and would mis-baseline
     if (!latest.current.initialSyncDone || !leader.current) return;
@@ -80,9 +103,11 @@ export function AlertMonitor(): null {
       // A Vulns rule added in another tab: load the data; its arrival re-runs the check
       if (rulesNeedVulns(s.alertRules, s)) void ensureVulns();
       if (needsNpmData(s)) { void ensureNpmAdvisories(); void ensureNpmMalware(); }
+      const ecos = watchedEcosystems(s);
+      for (const eco of ecos) void ensureEcosystemAdvisories(eco);
       const watched = s.watchedCves;
       const epss = watched.length > 0 ? await fetchEpssScores(watched) : new Map<string, number>();
-      const { feeds: feedList, articles: list, cveIntel: intel, vulns: data, npmAdvisories: npmData, npmMalware: malware } = latest.current; // read after the await
+      const { feeds: feedList, articles: list, cveIntel: intel, vulns: data, npmAdvisories: npmData, npmMalware: malware, ecosystemAdvisories: ecoData } = latest.current; // read after the await
       const store = await loadAlertStore();
       const categories = new Map(feedList.map(f => [f.id, f.category]));
       const result = runAlertCheck({
@@ -96,7 +121,11 @@ export function AlertMonitor(): null {
         now: new Date(),
         permissionGranted: notificationsSupported() && Notification.permission === 'granted',
         // Matched once both files are in: malware arriving after the advisories would read as new reports
-        npm: { packages: s.npmPackages, advisories: npmData && malware ? npmData : null, malware },
+        // The other ecosystems' packages wait (not baselined) until their file is in
+        npm: {
+          packages: s.npmPackages, advisories: npmData && malware ? npmData : null, malware,
+          ecosystemPackages: s.ecosystemPackages, ecosystems: Object.fromEntries(ecos.map(eco => [eco, ecoData[eco] ?? null])),
+        },
       }, store);
       await saveAlertStore(result.store);
       notifyAlertMatches(result.notify);
@@ -114,7 +143,7 @@ export function AlertMonitor(): null {
   useEffect(() => {
     if (isRefreshing || !initialSyncDone || !isLeader) return;
     void checkRef.current();
-  }, [isRefreshing, initialSyncDone, isLeader, vulns, npmAdvisories, npmMalware, settings.alertRules, settings.watchlistKeywords, settings.stackKeywords, settings.watchedCves, settings.npmPackages, settings.alertGapHours]);
+  }, [isRefreshing, initialSyncDone, isLeader, vulns, npmAdvisories, npmMalware, ecosystemAdvisories, settings.alertRules, settings.watchlistKeywords, settings.stackKeywords, settings.watchedCves, settings.npmPackages, settings.ecosystemPackages, settings.alertGapHours]);
 
   useEffect(() => {
     const timer = window.setInterval(() => void checkRef.current(), CHECK_INTERVAL_MS);

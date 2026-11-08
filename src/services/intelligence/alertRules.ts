@@ -5,6 +5,7 @@ import { containsTerm } from '../../utils/textMatch';
 import { checkWatchlistMatch } from './watchlist';
 import { isRemoteNoAuth } from './vulns';
 import { fieldsFor } from './ruleForm';
+import { cleanEcosystemList } from '../packages/entries';
 
 export const SEVERITY_RANK: Record<ThreatSeverity, number> = { info: 0, low: 1, medium: 2, high: 3, critical: 4 };
 
@@ -168,7 +169,7 @@ export const BUILT_IN_NAMES: Record<BuiltInRule, string> = {
   'stack-news': 'My Stack (news)',
   'stack-vulns': 'My Stack (vulns)',
   'watched-cves': 'Watched CVEs',
-  'npm-packages': 'My npm packages',
+  'npm-packages': 'My packages', // every ecosystem; the id stays npm-packages
 };
 
 const BUILT_IN_ORDER: BuiltInRule[] = ['watchlist', 'stack-news', 'stack-vulns', 'watched-cves', 'npm-packages'];
@@ -180,7 +181,7 @@ type RuleLists = Pick<UserSettings, 'watchlistKeywords' | 'stackKeywords' | 'wat
 
 /**
  * The built-in rules; their conditions are derived live from the settings lists, so `root` is stored empty.
- * "My npm packages" matches the watched packages against the npm advisories (not a condition tree) and
+ * "My packages" matches the watched packages against their ecosystems' advisories (not a condition tree) and
  * notifies from the start: it only ever alerts on advisories published after a package was added.
  * It is the only one enabled from the start; the others (lists the user fills) are switched on in Settings
  * so My Feed starts empty.
@@ -380,7 +381,7 @@ export function migrateAlertRules(saved: Partial<UserSettings>, now: Date): Aler
   return [...kept, ...builtIns.filter(r => !have.has(r.builtIn))];
 }
 
-export type AlertSettings = RuleLists & Pick<UserSettings, 'alertRules' | 'alertGapHours' | 'npmPackages'>;
+export type AlertSettings = RuleLists & Pick<UserSettings, 'alertRules' | 'alertGapHours' | 'npmPackages' | 'ecosystemPackages'>;
 
 const stringList = (v: unknown): string[] | undefined =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined;
@@ -397,6 +398,7 @@ export function alertSettingsFrom(memory: AlertSettings, saved: Partial<UserSett
     stackKeywords: stringList(saved.stackKeywords) ?? memory.stackKeywords,
     watchedCves: stringList(saved.watchedCves) ?? memory.watchedCves,
     npmPackages: stringList(saved.npmPackages) ?? memory.npmPackages,
+    ecosystemPackages: Array.isArray(saved.ecosystemPackages) ? cleanEcosystemList(saved.ecosystemPackages) : memory.ecosystemPackages,
     alertGapHours: (ALERT_GAP_OPTIONS as readonly number[]).includes(saved.alertGapHours as number) ? saved.alertGapHours! : memory.alertGapHours,
   };
 }

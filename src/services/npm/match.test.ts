@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NpmAdvisory, NpmAdvisoryData, NpmIndexEntry, NpmMalwareData, NpmMalwareTuple } from './advisories';
-import { affectingKeys, knownAdvisoryIds, matchPackages, OSV_ONLY_RANGE } from './match';
+import { affectingKeys, knownAdvisoryIds, matchPackages, OSV_ONLY_RANGE, type PackageResult } from './match';
 import type { OsvResult } from './osv';
 
 const NOW = '2026-11-04T00:00:00Z';
@@ -238,5 +238,102 @@ describe('knownAdvisoryIds', () => {
     const ids = knownAdvisoryIds(data([LODASH]), malware([['GHSA-mmmm-mmmm-mmmm', 'evil', '>= 0', NOW]]));
     expect([...ids].sort()).toEqual(['GHSA-aaaa-aaaa-aaaa', 'GHSA-mmmm-mmmm-mmmm']);
     expect([...knownAdvisoryIds(data([LODASH]), null)]).toEqual(['GHSA-aaaa-aaaa-aaaa']);
+  });
+});
+
+describe('matchPackages across ecosystems', () => {
+  const DJANGO: NpmIndexEntry = ['GHSA-pypi-dj01-0001', 'critical', [['Django', '>= 3.2, < 3.2.14', '3.2.14']]];
+  const NPM_DJANGO: NpmIndexEntry = ['GHSA-npm0-dj01-0001', 'high', [['django', '< 99.0.0', '99.0.0']]];
+  const LOG4J: NpmIndexEntry = ['GHSA-jfh8-c2jp-5v3q', 'critical', [['org.apache.logging.log4j:log4j-core', '>= 2.13.0, < 2.15.0', '2.15.0']]];
+  const pypi = { ecosystem: 'pypi' as const, name: 'django', version: '3.2.0' };
+
+  it('matches a PyPI entry against pip advisories and not against an npm advisory of the same name', () => {
+    const results = matchPackages([pypi], { npm: data([NPM_DJANGO]), pypi: data([DJANGO]) }, null);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ ecosystem: 'pypi', status: 'affected', entry: { name: 'django', version: '3.2.0' }, minSafeVersion: '3.2.14' });
+    expect(results[0].advisories.map(a => a.id)).toEqual(['GHSA-pypi-dj01-0001']);
+    // and the npm entry of the same name sees only the npm advisory
+    const [npm] = matchPackages([{ name: 'django', version: '1.0.0' }], { npm: data([NPM_DJANGO]), pypi: data([DJANGO]) }, null);
+    expect(npm).toMatchObject({ ecosystem: 'npm', status: 'affected' });
+    expect(npm.advisories.map(a => a.id)).toEqual(['GHSA-npm0-dj01-0001']);
+  });
+
+  it('normalises names on both sides (PEP 503 for PyPI)', () => {
+    const odd: NpmIndexEntry = ['GHSA-pypi-odd0-0001', 'low', [['foo-bar-baz', '< 2.0', '2.0']]];
+    const [r] = matchPackages([{ ecosystem: 'pypi', name: 'Foo_Bar.baz', version: '1.0' }], { pypi: data([odd]) }, null);
+    expect(r).toMatchObject({ status: 'affected', entry: { name: 'Foo_Bar.baz', version: '1.0' } });
+  });
+
+  it('flags log4j-core 2.14.1 for Log4Shell, and 2.15.0 is outside that range', () => {
+    const maven = { ecosystem: 'maven' as const, name: 'org.apache.logging.log4j:log4j-core' };
+    const [hit] = matchPackages([{ ...maven, version: '2.14.1' }], { maven: data([LOG4J]) }, null);
+    expect(hit).toMatchObject({ status: 'affected', ecosystem: 'maven', minSafeVersion: '2.15.0' });
+    expect(matchPackages([{ ...maven, version: '2.15.0' }], { maven: data([LOG4J]) }, null)[0].status).toBe('not-affected');
+  });
+
+  it('gives unknown for a Maven entry whose version cannot be read', () => {
+    const [r] = matchPackages([{ ecosystem: 'maven', name: 'org.apache.logging.log4j:log4j-core', version: '${project.version}' }], { maven: data([LOG4J]) }, null);
+    expect(r.status).toBe('unknown');
+    expect(r.advisories.map(a => a.id)).toEqual(['GHSA-jfh8-c2jp-5v3q']);
+  });
+
+  it('gives unknown with "no data", never not-affected, for an ecosystem whose file failed', () => {
+    const results = matchPackages([pypi, { ecosystem: 'pypi', name: 'requests' }, { name: 'lodash', version: '4.17.21' }], { npm: data([LODASH]) }, null);
+    const by = (name: string) => results.find(r => r.entry.name === name)!;
+    expect(by('django')).toMatchObject({ status: 'unknown', reason: 'no data', ecosystem: 'pypi', advisories: [] });
+    expect(by('requests')).toMatchObject({ status: 'unknown', reason: 'no data' });
+    expect(by('lodash')).toMatchObject({ status: 'not-affected', ecosystem: 'npm' });
+    expect(by('lodash').reason).toBeUndefined();
+  });
+
+  it('never applies npm malware to another ecosystem', () => {
+    const m = malware([['GHSA-mmmm-mmmm-mmmm', 'django', '>= 0', NOW]]);
+    const [r] = matchPackages([pypi], { pypi: data([]) }, m);
+    expect(r).toMatchObject({ status: 'not-affected', malware: false });
+  });
+
+  it('keys OSV answers by the prefixed entry for other ecosystems', () => {
+    const osv = new Map<string, OsvResult>([['pypi:django@3.2.0', { complete: true, vulns: [{ id: 'PYSEC-1', severity: 'high', malware: false, aliases: [], ranges: [] }] }]]);
+    const [r] = matchPackages([pypi], { pypi: data([]) }, null, osv);
+    expect(r).toMatchObject({ status: 'affected', osv: 'checked' });
+  });
+
+  it('keeps npm results byte-identical to before for an npm-only list, by either call', async () => {
+    const golden = (await import('./match.npm-golden.json')).default as { plain: unknown; osv: unknown };
+    const d = data([
+      ['GHSA-aaaa-aaaa-aaaa', 'high', [['lodash', '< 4.17.21', '4.17.21']]],
+      ['GHSA-bbbb-bbbb-bbbb', 'critical', [['lodash', '< 4.17.12', '4.17.12']]],
+      ['GHSA-cccc-cccc-cccc', 'medium', [['qs', '< 6.2.4', '6.2.4'], ['qs', '>= 6.3.0, < 6.3.3', '6.3.3']]],
+      ['GHSA-dddd-dddd-dddd', 'low', [['Electron', '~1.7']]],
+      ['GHSA-gggg-gggg-gggg', 'critical', [['qs', '< 9.0.0', '9.0.0']], 1],
+    ], [{ id: 'GHSA-aaaa-aaaa-aaaa', summary: 'Prototype pollution' }]);
+    const m = malware([['GHSA-mmmm-mmmm-mmmm', 'Evil-Pkg', '>= 0', NOW]]);
+    const entries = [{ name: 'lodash', version: '4.17.10' }, { name: 'lodash' }, { name: 'qs', version: '6.3.1' }, { name: 'qs', version: '6.2.5' }, { name: 'electron', version: '1.7.5' }, { name: 'evil-pkg', version: '1.0.0' }, { name: 'left-pad' }, { name: 'lodash', version: 'not-a-version' }, { name: 'lodash', version: '4.17.10' }];
+    const osv = new Map<string, OsvResult>([
+      ['qs@6.2.5', { complete: true, vulns: [{ id: 'OSV-1', severity: 'high', malware: false, aliases: [], ranges: [{ vulnerable: '< 7.0.0', patched: '7.0.0' }] }] }],
+      ['electron@1.7.5', { complete: false, vulns: [{ id: 'GHSA-dddd-dddd-dddd', severity: 'unknown', malware: false, aliases: [], ranges: [] }] }],
+    ]);
+    const withoutEco = (rs: PackageResult[]) => {
+      expect(rs.every(r => r.ecosystem === 'npm')).toBe(true);
+      return JSON.parse(JSON.stringify(rs.map(({ ecosystem: _e, ...rest }) => rest)));
+    };
+    for (const run of [(o?: Map<string, OsvResult>) => matchPackages(entries, d, m, o), (o?: Map<string, OsvResult>) => matchPackages(entries, { npm: d }, m, o)]) {
+      expect(withoutEco(run())).toEqual(golden.plain);
+      expect(withoutEco(run(osv))).toEqual(golden.osv);
+      expect(affectingKeys(run())).toEqual(affectingKeys(matchPackages(entries, d, m)));
+    }
+  });
+});
+
+describe('affectingKeys across ecosystems', () => {
+  it('prefixes the other ecosystems and leaves npm as it was', () => {
+    const d = data([['GHSA-aaaa-aaaa-aaaa', 'high', [['django', '< 4.0', '4.0']]]]);
+    const results = matchPackages([{ ecosystem: 'pypi', name: 'django', version: '3.2.0' }, { ecosystem: 'pypi', name: 'django' }, { name: 'django', version: '1.0.0' }], { npm: d, pypi: d }, null);
+    expect(affectingKeys(results).sort()).toEqual(['GHSA-aaaa-aaaa-aaaa|django@1.0.0', 'GHSA-aaaa-aaaa-aaaa|pypi:django', 'GHSA-aaaa-aaaa-aaaa|pypi:django@3.2.0']);
+  });
+
+  it('collects known advisory ids of every loaded ecosystem', () => {
+    const ids = knownAdvisoryIds({ npm: data([LODASH]), pypi: data([['GHSA-pypi-0000-0001', 'low', []]]) }, null);
+    expect([...ids].sort()).toEqual(['GHSA-aaaa-aaaa-aaaa', 'GHSA-pypi-0000-0001']);
   });
 });

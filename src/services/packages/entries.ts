@@ -98,3 +98,11 @@ export function cleanEcosystemList(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return splitEntries(raw).other.slice(0, MAX_ENTRIES);
 }
+
+/**
+ * The key of a watched entry in match results, OSV answers and alert keys: an npm entry as it always was
+ * (`name@version`), the others with their prefix (`pypi:name@version`). An entry without an ecosystem is npm.
+ */
+export function watchKey(e: { ecosystem?: Ecosystem; name: string; version?: string }): string {
+  return formatEntry({ ecosystem: e.ecosystem ?? 'npm', name: e.name, ...(e.version ? { version: e.version } : {}) });
+}

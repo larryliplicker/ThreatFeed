@@ -17,8 +17,9 @@ import {
   getStoredValue,
   saveStoredValue
 } from '../services/storage/indexeddb';
-import { loadActors, loadEntities, loadMsrc, loadNpmAdvisories, loadNpmMalware, loadRansomwareIntel, loadSnapshot, loadStats, loadTrends, loadVulnData } from '../services/snapshot';
+import { loadActors, loadEcosystemAdvisories, loadEntities, loadMsrc, loadNpmAdvisories, loadNpmMalware, loadRansomwareIntel, loadSnapshot, loadStats, loadTrends, loadVulnData } from '../services/snapshot';
 import { decodeNpmData, decodeNpmMalware, type NpmAdvisoryData, type NpmMalwareData } from '../services/npm/advisories';
+import type { Ecosystem } from '../services/packages/ecosystems';
 import { buildEntityMatcher } from '../services/intelligence/entityLinks';
 import { NPM_RULE_ID } from '../services/intelligence/alertEngine';
 import { EntityMatcherContext } from '../hooks/useEntityMatcher';
@@ -59,6 +60,8 @@ export function isBackedOff(health: FeedHealth | undefined, now = Date.now()): b
   return now - new Date(health.lastFetchedAt || 0).getTime() < BACKOFF_RETRY_MS;
 }
 
+type OtherEcosystem = Exclude<Ecosystem, 'npm'>;
+
 interface FeedContextType {
   feeds: Feed[];
   cveIntel: Record<string, CveIntel>;
@@ -81,6 +84,8 @@ interface FeedContextType {
   ensureNpmAdvisories: () => Promise<unknown>; // like ensureMsrc, for data/npm-advisories.json; use the useNpmAdvisories hook
   npmMalware: NpmMalwareData | null; // 30 days of malicious npm releases
   ensureNpmMalware: () => Promise<unknown>; // like ensureMsrc, for data/npm-malware.json; use the useNpmAdvisories hook
+  ecosystemAdvisories: Partial<Record<OtherEcosystem, NpmAdvisoryData>>; // the loaded data/advisories-<eco>.json files
+  ensureEcosystemAdvisories: (eco: OtherEcosystem) => Promise<NpmAdvisoryData | null>; // like ensureNpmAdvisories, per ecosystem; use the useEcosystemAdvisories hook
   articles: Article[];
   feedHealth: Record<string, FeedHealth>;
   isRefreshing: boolean;
@@ -135,6 +140,7 @@ export const FeedProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [entities, setEntities] = useState<EntitiesData | null>(null);
   const [npmAdvisories, setNpmAdvisories] = useState<LoadedFor<NpmAdvisoryData> | null>(null);
   const [npmMalware, setNpmMalware] = useState<LoadedFor<NpmMalwareData> | null>(null);
+  const [ecosystemFiles, setEcosystemFiles] = useState<Partial<Record<OtherEcosystem, LoadedFor<NpmAdvisoryData>>>>({});
 
   // Latest values for async work started from older renders (init timer, auto-refresh interval)
   const settingsRef = useRef(settings);
@@ -523,8 +529,8 @@ export const FeedProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Background tabs don't refresh (unless they can send alert notifications); the visibilitychange
       // handler catches up when the tab returns
       const notificationPermission = 'Notification' in window ? Notification.permission : undefined;
-      // My npm packages can't alert without packages to watch, so then it doesn't keep a hidden tab refreshing
-      const alertRules = (settingsRef.current.alertRules ?? []).filter(r => r.builtIn !== NPM_RULE_ID || settingsRef.current.npmPackages?.length);
+      // My packages can't alert without packages to watch, so then it doesn't keep a hidden tab refreshing
+      const alertRules = (settingsRef.current.alertRules ?? []).filter(r => r.builtIn !== NPM_RULE_ID || settingsRef.current.npmPackages?.length || settingsRef.current.ecosystemPackages?.length);
       if (!navigator.onLine || shouldPauseWhenHidden(document.hidden, notificationPermission, alertRules)) return;
       // Snapshot mode: reload the (regularly rebuilt) snapshot; only feeds it lacks are fetched live
       if (settingsRef.current.dataSource !== 'live') {
@@ -836,6 +842,36 @@ export const FeedProvider: React.FC<{ children: React.ReactNode }> = ({ children
     read: readLoadedFor('npmMalware', decodeNpmMalware), save: (data) => saveStoredValue('npmMalware', data),
   }));
 
+  // The other ecosystems' advisory files, each loaded like the npm one, but only once something asks for that
+  // ecosystem (a watched package in it, or a view filtered to it): an npm-only user never requests them
+  const ecosystemFilesRef = useRef(ecosystemFiles);
+  ecosystemFilesRef.current = ecosystemFiles;
+  const [ecosystemLoaders] = useState(() => new Map<OtherEcosystem, () => Promise<LoadedFor<NpmAdvisoryData> | null>>());
+  const ensureEcosystemAdvisories = useCallback(async (eco: OtherEcosystem): Promise<NpmAdvisoryData | null> => {
+    let ensure = ecosystemLoaders.get(eco);
+    if (!ensure) {
+      const ref = {
+        get current() { return ecosystemFilesRef.current[eco] ?? null; },
+        set current(value: LoadedFor<NpmAdvisoryData> | null) { if (value) ecosystemFilesRef.current = { ...ecosystemFilesRef.current, [eco]: value }; },
+      };
+      ensure = createSnapshotLoader<LoadedFor<NpmAdvisoryData>>({
+        ref, snapshotAt, load: loadedFor(() => loadEcosystemAdvisories(eco)),
+        setState: (update) => setEcosystemFiles((prev) => {
+          const next = typeof update === 'function' ? update(prev[eco] ?? null) : update;
+          return next ? { ...prev, [eco]: next } : prev;
+        }),
+        read: readLoadedFor(`advisories-${eco}`, decodeNpmData), save: (data) => saveStoredValue(`advisories-${eco}`, data),
+      });
+      ecosystemLoaders.set(eco, ensure);
+    }
+    return (await ensure())?.data ?? null;
+  }, [ecosystemLoaders]); // eslint-disable-line react-hooks/exhaustive-deps -- loadedFor and snapshotAt only read refs
+  const ecosystemAdvisories = useMemo(() => {
+    const out: Partial<Record<OtherEcosystem, NpmAdvisoryData>> = {};
+    for (const [eco, file] of Object.entries(ecosystemFiles) as [OtherEcosystem, LoadedFor<NpmAdvisoryData>][]) out[eco] = file.data;
+    return out;
+  }, [ecosystemFiles]);
+
   // The names text links to their panels (data/entities.json, about 80 KB): requested once the first paint is
   // done, and again for each newer snapshot. Until then only CVE ids link
   const entitiesRef = useRef<EntitiesData | null>(null);
@@ -886,6 +922,8 @@ export const FeedProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ensureNpmAdvisories,
     npmMalware: npmMalware?.data ?? null,
     ensureNpmMalware,
+    ecosystemAdvisories,
+    ensureEcosystemAdvisories,
     articles: visibleArticles,
     feedHealth,
     isRefreshing,
@@ -912,7 +950,7 @@ export const FeedProvider: React.FC<{ children: React.ReactNode }> = ({ children
     visitBaseline,
     addCustomTagToArticle,
   }), [
-    feeds, cveIntel, snapshotGeneratedAt, incidents, vulns, ensureVulns, dataSources, ransomwareIntel, ensureRansomwareIntel, msrc, ensureMsrc, actors, ensureActors, trends, ensureTrends, stats, ensureStats, npmAdvisories, ensureNpmAdvisories, npmMalware, ensureNpmMalware, visibleArticles, feedHealth, isRefreshing, initialSyncDone, refreshProgress, lastUpdated, isOffline, activeArticle,
+    feeds, cveIntel, snapshotGeneratedAt, incidents, vulns, ensureVulns, dataSources, ransomwareIntel, ensureRansomwareIntel, msrc, ensureMsrc, actors, ensureActors, trends, ensureTrends, stats, ensureStats, npmAdvisories, ensureNpmAdvisories, npmMalware, ensureNpmMalware, ecosystemAdvisories, ensureEcosystemAdvisories, visibleArticles, feedHealth, isRefreshing, initialSyncDone, refreshProgress, lastUpdated, isOffline, activeArticle,
     refreshFeeds, refreshFailedFeeds, toggleFeedEnabled, addCustomFeed, addCustomFeeds, updateFeed, removeFeed,
     resetFeedsToDefault, toggleBookmark, setBookmarkFolder, setBookmarkNotes, toggleRead, markViewed,
     markAllAsRead, visitBaseline, addCustomTagToArticle,

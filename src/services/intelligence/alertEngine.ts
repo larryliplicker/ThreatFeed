@@ -2,8 +2,10 @@ import { AlertRule, AlertRuleKind, Article, ConditionGroup, CveIntel, NewsCondit
 import { buildVulnItems, builtInTerms, matchesNews, matchesVuln, resolveRoot, EvalContext, VulnItem } from './alertRules';
 import { buildWatchState, diffCveWatch, CveWatchState } from './cveWatch';
 import type { NpmAdvisoryData, NpmMalwareData } from '../npm/advisories';
-import { matchPackages } from '../npm/match';
+import { matchPackages, resultKey, type AdvisoriesByEcosystem, type WatchedEntry } from '../npm/match';
 import { formatPackageEntry, parsePackageEntry, type PackageEntry } from '../npm/semver';
+import { parseEntry, watchKey } from '../packages/entries';
+import type { Ecosystem } from '../packages/ecosystems';
 
 export interface AlertMatch {
   ruleId: string;
@@ -35,8 +37,8 @@ export interface AlertStore {
   pending: AlertMatch[]; // notifiable matches held back by the gap
   lastNotifiedAt?: string;
   seen: { news?: string; vulns?: string; npm?: string }; // "Mark all seen" per My Feed sub-tab; npm: the Vulns npm tab last opened
-  npmSeen: string[]; // affecting keys (`advisoryId|package[@version]`) already alerted or baselined, oldest first
-  npmKnownEntries: string[]; // watched package entries already baselined on this device
+  npmSeen: string[]; // affecting keys (`advisoryId|package[@version]`, other ecosystems `advisoryId|eco:package[@version]`) already alerted or baselined, oldest first
+  npmKnownEntries: string[]; // watched package entries already baselined on this device (npm unprefixed, the others `eco:`)
 }
 
 type RuleLists = Pick<UserSettings, 'watchlistKeywords' | 'stackKeywords' | 'watchedCves'>;
@@ -59,6 +61,9 @@ export interface NpmInput {
   packages: string[]; // settings.npmPackages
   advisories: NpmAdvisoryData | null; // null while not loaded: removed packages are still dropped, nothing new is matched
   malware: NpmMalwareData | null;
+  ecosystemPackages?: string[]; // settings.ecosystemPackages (prefixed entries of the other ecosystems)
+  /** The other ecosystems' files; a missing or null one is not loaded, and its packages wait like npm's do */
+  ecosystems?: Partial<Record<Exclude<Ecosystem, 'npm'>, NpmAdvisoryData | null>>;
 }
 
 export interface CheckResult {
@@ -216,6 +221,33 @@ function watchedEntries(packages: string[]): string[] {
   return [...new Set(packages.map(parsePackageEntry).filter((e): e is PackageEntry => e !== null).map(formatPackageEntry))];
 }
 
+type OtherEntry = WatchedEntry & { ecosystem: Exclude<Ecosystem, 'npm'> };
+
+/** The watched entries of the other ecosystems by their prefixed key */
+function ecosystemEntries(packages: string[] | undefined): Map<string, OtherEntry> {
+  const out = new Map<string, OtherEntry>();
+  for (const raw of packages ?? []) {
+    const e = typeof raw === 'string' ? parseEntry(raw) : null;
+    if (!e || e.ecosystem === 'npm') continue;
+    const key = watchKey(e);
+    if (!out.has(key)) out.set(key, { ...e, ecosystem: e.ecosystem });
+  }
+  return out;
+}
+
+/** Every watched entry, formatted: npm as before, then the other ecosystems prefixed */
+const allWatched = (npm: Pick<NpmInput, 'packages' | 'ecosystemPackages'>) =>
+  [...watchedEntries(npm.packages), ...ecosystemEntries(npm.ecosystemPackages).keys()];
+
+/** Summaries of the detailed advisories of every loaded file; npm's win, read as they always were (the last one per id) */
+function summariesOf(npm: Pick<NpmInput, 'advisories' | 'ecosystems'>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const file of [...Object.values(npm.ecosystems ?? {}), npm.advisories]) {
+    for (const a of file?.recent ?? []) map.set(a.id, a.summary);
+  }
+  return map;
+}
+
 /** "lodash@4.17.15: Prototype pollution (GHSA-…)", the id alone when there is no summary; malware says so */
 export function npmAlertTitle(id: string, entry: string, summary?: string, malware?: boolean): string {
   if (malware) return `Malicious release: ${entry} (${id})`;
@@ -223,10 +255,12 @@ export function npmAlertTitle(id: string, entry: string, summary?: string, malwa
 }
 
 /**
- * The npm side of a check. Every key affecting a watched package is recorded in `npmSeen`; one not in it yet
- * becomes an alert, except for a package not seen before on this device (just added, or the first check with
- * this rule), whose advisories are recorded silently. Removed packages drop their keys. Switched off, the rule
- * forgets its known packages, so switching it back on baselines again instead of alerting what came out meanwhile.
+ * The packages side of a check (every ecosystem). Every key affecting a watched package is recorded in `npmSeen`;
+ * one not in it yet becomes an alert, except for a package not seen before on this device (just added, or the
+ * first check with this rule), whose advisories are recorded silently. Removed packages drop their keys. A package
+ * whose ecosystem file isn't loaded is left as it was: its keys are kept, and it is not baselined (known) until
+ * its file has been matched, so its existing advisories never alert. Switched off, the rule forgets its known
+ * packages, so switching it back on baselines again instead of alerting what came out meanwhile.
  */
 function npmCheck(input: CheckInput, store: AlertStore): { state?: RuleState; fresh: AlertMatch[]; seen: string[]; known: string[] } {
   const rule = input.rules.find(r => r.builtIn === NPM_RULE_ID);
@@ -239,22 +273,38 @@ function npmCheck(input: CheckInput, store: AlertStore): { state?: RuleState; fr
   const { now } = input;
   const stamp = now.toISOString();
   const { advisories } = input.npm;
-  const entries = watchedEntries(input.npm.packages);
+  const npmEntries = watchedEntries(input.npm.packages);
+  const others = ecosystemEntries(input.npm.ecosystemPackages);
+  const entries = [...npmEntries, ...others.keys()];
   const watched = new Set(entries);
   const known = new Set(before.known.filter(e => watched.has(e)));
   const seen = new Set(before.seen.filter(k => watched.has(keyEntry(k))));
   const handled = { ...prev?.handled };
-  if (!advisories) {
+  const files: AdvisoriesByEcosystem = {};
+  for (const [eco, file] of Object.entries(input.npm.ecosystems ?? {}) as [Exclude<Ecosystem, 'npm'>, NpmAdvisoryData | null][]) {
+    if (file) files[eco] = file;
+  }
+  // Nothing watched can be matched yet: everything stays as it was (npm-only, this is the old "not loaded" case)
+  if (!advisories && ![...others.values()].some(e => files[e.ecosystem])) {
     for (const key of Object.keys(handled)) if (!watched.has(keyEntry(key))) delete handled[key];
     return { state: prev && { ...prev, handled, enabled: true }, fresh: [], seen: [...seen], known: [...known] };
   }
-  const summaries = new Map(advisories.recent.map(a => [a.id, a.summary]));
-  const results = matchPackages(entries.map(e => parsePackageEntry(e)!), advisories, input.npm.malware);
+  if (advisories) files.npm = advisories;
+  // Entries whose file isn't loaded wait: not matched, not baselined, their keys and alerts kept
+  const waiting = new Set(entries.filter(e => !files[others.get(e)?.ecosystem ?? 'npm']));
+  const summaries = summariesOf(input.npm);
+  const matchable: WatchedEntry[] = [
+    ...(advisories ? npmEntries.map(e => parsePackageEntry(e)!) : []),
+    ...[...others.values()].filter(e => files[e.ecosystem]),
+  ];
+  // npm alone is matched exactly as it always was
+  const results = others.size ? matchPackages(matchable, files, input.npm.malware) : matchPackages(matchable, advisories!, input.npm.malware);
 
   const fresh: AlertMatch[] = [];
   const current = new Set<string>();
+  for (const key of seen) if (waiting.has(keyEntry(key))) current.add(key);
   for (const r of results) {
-    const entry = formatPackageEntry(r.entry);
+    const entry = resultKey(r);
     for (const a of r.advisories) {
       const key = `${a.id}|${entry}`;
       current.add(key);
@@ -280,13 +330,13 @@ function npmCheck(input: CheckInput, store: AlertStore): { state?: RuleState; fr
     state: { version: NPM_RULE_ID, terms: [], handled, enabled: true },
     fresh,
     seen: [...stale, ...[...seen].filter(k => current.has(k))],
-    known: entries,
+    known: waiting.size ? entries.filter(e => !waiting.has(e) || known.has(e)) : entries,
   };
 }
 
-/** Alerts of the npm rule for packages still watched that came after the npm tab was last opened */
-export function npmUnseenCount(store: AlertStore, packages: string[]): number {
-  const watched = new Set(watchedEntries(packages));
+/** Alerts of the packages rule for packages still watched (npm and the other ecosystems) that came after the npm tab was last opened */
+export function npmUnseenCount(store: AlertStore, packages: string[], ecosystemPackages: string[] = []): number {
+  const watched = new Set(allWatched({ packages, ecosystemPackages }));
   const since = store.seen?.npm;
   return Object.entries(store.rules[NPM_RULE_ID]?.handled ?? {})
     .filter(([key, at]) => watched.has(keyEntry(key)) && (!since || at > since)).length;
@@ -428,7 +478,7 @@ function eventText(itemId: string, articles: Article[]): string {
  * for CVEs still watched, since events only exist at the check that saw them.
  */
 export function feedMatches(
-  input: Omit<CheckInput, 'now' | 'permissionGranted' | 'epss' | 'npm'> & { npm?: { packages: string[]; advisories: NpmAdvisoryData | null; malware: NpmMalwareData | null } },
+  input: Omit<CheckInput, 'now' | 'permissionGranted' | 'epss' | 'npm'> & { npm?: NpmInput },
   store: AlertStore,
 ): AlertMatch[] {
   const lists = input.settings;
@@ -462,8 +512,8 @@ export function feedMatches(
   // npm alerts are recorded with their key; the title is rebuilt from the npm data when it is loaded
   const npmRule = input.rules.find(r => r.builtIn === NPM_RULE_ID && r.enabled);
   if (npmRule && input.npm) {
-    const watchedPackages = new Set(watchedEntries(input.npm.packages));
-    const summaries = new Map(input.npm.advisories?.recent.map(a => [a.id, a.summary]));
+    const watchedPackages = new Set(allWatched(input.npm));
+    const summaries = summariesOf(input.npm);
     const malware = new Set(input.npm.malware?.entries.map(m => m[0]));
     for (const [itemId, at] of Object.entries(store.rules[NPM_RULE_ID]?.handled ?? {})) {
       const entry = keyEntry(itemId);

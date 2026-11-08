@@ -464,7 +464,7 @@ describe('npm packages', () => {
     const next = runAlertCheck(npmInput(['lodash@4.17.15'], data, null, { now: later(2 * HOUR) }), added.store);
     expect(next.notify).toHaveLength(1);
     expect(next.notify[0]).toMatchObject({
-      ruleId: 'npm-packages', ruleName: 'My npm packages', kind: 'vulns', itemId: keyOf(NEW[0], 'lodash@4.17.15'), ref: NEW[0],
+      ruleId: 'npm-packages', ruleName: 'My packages', kind: 'vulns', itemId: keyOf(NEW[0], 'lodash@4.17.15'), ref: NEW[0],
       title: `lodash@4.17.15: Prototype pollution (${NEW[0]})`, notifiable: true,
     });
     expect(next.store.npmSeen).toContain(keyOf(NEW[0], 'lodash@4.17.15'));
@@ -595,10 +595,79 @@ describe('npm packages', () => {
     expect(store.seen.npm).toBe(stamp);
   });
 
+  describe('in other ecosystems', () => {
+    const DJ_OLD: NpmIndexEntry = ['GHSA-2gwj-7jmv-h26r', 'critical', [['Django', '>= 3.2, < 3.2.14', '3.2.14']]];
+    const DJ_NEW: NpmIndexEntry = ['GHSA-new0-dj00-0001', 'high', [['django', '< 4.0', '4.0']]];
+    const DJ = 'pypi:django@3.2.0';
+    const ecoInput = (packages: string[], ecosystemPackages: string[], npmData: NpmAdvisoryData | null, pypi: NpmAdvisoryData | null | undefined, overrides: Partial<CheckInput> = {}) =>
+      input({ rules: [npmRule], vulns: null, npm: { packages, advisories: npmData, malware: null, ecosystemPackages, ecosystems: pypi === undefined ? {} : { pypi } }, ...overrides });
+
+    it('adding a PyPI package with existing advisories sends no alert, and a new advisory after that alerts once', () => {
+      const first = runAlertCheck(ecoInput(['lodash@4.17.15'], [], advisories([PROTO]), undefined), emptyAlertStore(NOW));
+      const added = runAlertCheck(ecoInput(['lodash@4.17.15'], [DJ], advisories([PROTO]), advisories([DJ_OLD]), { now: later(HOUR) }), first.store);
+      expect(added.notify).toEqual([]);
+      expect(added.store.npmSeen).toContain(keyOf(DJ_OLD[0], DJ));
+      expect(added.store.npmKnownEntries).toEqual(['lodash@4.17.15', DJ]);
+
+      const next = runAlertCheck(ecoInput(['lodash@4.17.15'], [DJ], advisories([PROTO]), advisories([DJ_OLD, DJ_NEW]), { now: later(2 * HOUR) }), added.store);
+      expect(next.notify.map(m => m.itemId)).toEqual([keyOf(DJ_NEW[0], DJ)]);
+      expect(next.notify[0]).toMatchObject({ ruleName: 'My packages', ref: DJ_NEW[0], title: `${DJ}: ${DJ_NEW[0]}` });
+      const again = runAlertCheck(ecoInput(['lodash@4.17.15'], [DJ], advisories([PROTO]), advisories([DJ_OLD, DJ_NEW]), { now: later(3 * HOUR) }), next.store);
+      expect(again.notify).toEqual([]);
+      expect(npmUnseenCount(again.store, ['lodash@4.17.15'], [DJ])).toBe(1);
+      expect(npmUnseenCount(again.store, ['lodash@4.17.15'])).toBe(0);
+    });
+
+    it('still recognises the npm keys stored before other ecosystems existed', () => {
+      const legacy: AlertStore = {
+        ...emptyAlertStore(NOW),
+        npmSeen: [keyOf(PROTO[0], 'lodash@4.17.15'), keyOf(CMD[0], 'lodash@4.17.15')],
+        npmKnownEntries: ['lodash@4.17.15'],
+      };
+      const r = runAlertCheck(ecoInput(['lodash@4.17.15'], [DJ], advisories([PROTO, CMD]), advisories([DJ_OLD]), { now: later(HOUR) }), legacy);
+      expect(r.notify).toEqual([]);
+      expect(r.store.npmSeen).toEqual(expect.arrayContaining([keyOf(PROTO[0], 'lodash@4.17.15'), keyOf(CMD[0], 'lodash@4.17.15'), keyOf(DJ_OLD[0], DJ)]));
+    });
+
+    it('does not baseline a package whose ecosystem file is missing, and keeps its keys until the file is back', () => {
+      // Added while the PyPI file is not loaded: nothing recorded, not known yet
+      const first = runAlertCheck(ecoInput([], [DJ], null, advisories([DJ_OLD])), emptyAlertStore(NOW));
+      const missing = runAlertCheck(ecoInput([], [DJ, 'pypi:flask@1.0'], null, null, { now: later(HOUR) }), first.store);
+      expect(missing.notify).toEqual([]);
+      expect(missing.store.npmKnownEntries).toEqual([DJ]); // flask not baselined without data
+      expect(missing.store.npmSeen).toEqual([keyOf(DJ_OLD[0], DJ)]); // django's keys are kept
+      const flask: NpmIndexEntry = ['GHSA-flsk-0000-0001', 'high', [['Flask', '< 2.0', '2.0']]];
+      const back = runAlertCheck(ecoInput([], [DJ, 'pypi:flask@1.0'], null, advisories([DJ_OLD, flask]), { now: later(2 * HOUR) }), missing.store);
+      expect(back.notify).toEqual([]); // flask's existing advisory is its baseline, django's was seen
+      expect(back.store.npmKnownEntries).toEqual([DJ, 'pypi:flask@1.0']);
+    });
+
+    it('treats a loaded file of an unwatched ecosystem as nothing to match', () => {
+      const first = runAlertCheck(npmInput(['lodash@4.17.15'], advisories([PROTO])), emptyAlertStore(NOW));
+      const r = runAlertCheck(ecoInput(['lodash@4.17.15'], [], null, advisories([DJ_OLD]), { now: later(HOUR) }), first.store);
+      expect(r.notify).toEqual([]);
+      expect(r.store.npmSeen).toEqual(first.store.npmSeen);
+      expect(r.store.npmKnownEntries).toEqual(first.store.npmKnownEntries);
+    });
+
+    it('keeps npm-only output unchanged when no other ecosystem is watched', () => {
+      const plain = runAlertCheck(npmInput(['lodash@4.17.15'], advisories([PROTO, CMD])), emptyAlertStore(NOW));
+      const withEmpty = runAlertCheck(ecoInput(['lodash@4.17.15'], [], advisories([PROTO, CMD]), undefined), emptyAlertStore(NOW));
+      expect(withEmpty).toEqual(plain);
+    });
+
+    it('lists the alerts of other ecosystems in My Feed', () => {
+      const added = runAlertCheck(ecoInput([], [DJ], null, advisories([DJ_OLD])), emptyAlertStore(NOW));
+      const next = runAlertCheck(ecoInput([], [DJ], null, advisories([DJ_OLD, DJ_NEW], [detail(DJ_NEW[0], 'Path traversal')]), { now: later(HOUR) }), added.store);
+      const rows = feedMatches({ ...ecoInput([], [DJ], null, null), npm: { packages: [], advisories: null, malware: null, ecosystemPackages: [DJ], ecosystems: { pypi: advisories([DJ_OLD, DJ_NEW], [detail(DJ_NEW[0], 'Path traversal')]) } } }, next.store);
+      expect(rows.map(r => [r.itemId, r.title])).toEqual([[keyOf(DJ_NEW[0], DJ), `${DJ}: Path traversal (${DJ_NEW[0]})`]]);
+    });
+  });
+
   it('migration adds the built-in rule once', () => {
     const old = createBuiltInRules(false, NOW).filter(r => r.builtIn !== 'npm-packages');
     const migrated = migrateAlertRules({ alertRules: old }, NOW);
-    expect(migrated.filter(r => r.builtIn === 'npm-packages')).toEqual([expect.objectContaining({ id: 'npm-packages', name: 'My npm packages', kind: 'vulns', enabled: true, notify: true })]);
+    expect(migrated.filter(r => r.builtIn === 'npm-packages')).toEqual([expect.objectContaining({ id: 'npm-packages', name: 'My packages', kind: 'vulns', enabled: true, notify: true })]);
     expect(migrateAlertRules({ alertRules: migrated }, later(HOUR)).filter(r => r.builtIn === 'npm-packages')).toHaveLength(1);
   });
 });

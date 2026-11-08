@@ -1,9 +1,15 @@
-// Opt-in lookup of watched npm packages in OSV.dev (Google). Only called when the user turns on
-// "Also check full history with OSV.dev": it sends the package names and versions. OSV answers are
+// Opt-in lookup of watched packages (every ecosystem) in OSV.dev (Google). Only called when the user turns on
+// "Also check full history with OSV.dev": it sends the package names, versions and their OSV ecosystem names. OSV answers are
 // untrusted input: ids are checked before they go into a URL, text is kept as plain, capped text.
 
 import type { NpmAdvisory } from './advisories';
-import { formatPackageEntry, type OsvEvent, type PackageEntry } from './semver';
+import type { OsvEvent, PackageEntry } from './semver';
+import { ECOSYSTEMS, type Ecosystem } from '../packages/ecosystems';
+import { normalizeName, watchKey } from '../packages/entries';
+import { stripGoV } from '../packages/versions/goVersion';
+
+/** A watched entry; one without an ecosystem is npm */
+type Entry = PackageEntry & { ecosystem?: Ecosystem };
 
 export const OSV_BATCH_URL = 'https://api.osv.dev/v1/querybatch';
 export const OSV_VULN_URL = 'https://api.osv.dev/v1/vulns/';
@@ -69,7 +75,7 @@ function resultIds(r: unknown): { ids: string[]; complete: boolean } | null {
   return { ids, complete: !r.next_page_token };
 }
 
-/** OSV SEMVER events as GHSA-style ranges: each introduced opens one, fixed or last_affected closes it */
+/** OSV SEMVER / ECOSYSTEM events as GHSA-style ranges: each introduced opens one, fixed or last_affected closes it */
 function eventRanges(events: unknown): OsvRange[] {
   if (!Array.isArray(events)) return [];
   const ranges: OsvRange[] = [];
@@ -104,50 +110,59 @@ function decodeDetail(raw: unknown, id: string): Detail | null {
   return { summary: line(raw.summary, 300), severity, aliases, affected: Array.isArray(raw.affected) ? raw.affected : [] };
 }
 
-/** The ranges a detail record gives for one npm package */
-function packageRanges(detail: Detail, name: string): OsvRange[] {
+/**
+ * The ranges a detail record gives for one package of one ecosystem, names compared normalised. npm reads SEMVER
+ * ranges only, as it always did; the others also read ECOSYSTEM ranges (PyPI, Maven and NuGet use those).
+ */
+function packageRanges(detail: Detail, eco: Ecosystem, name: string): OsvRange[] {
   const ranges: OsvRange[] = [];
+  const want = normalizeName(eco, name);
+  const types = eco === 'npm' ? ['SEMVER'] : ['SEMVER', 'ECOSYSTEM'];
   for (const a of detail.affected) {
-    if (!isObject(a) || a.package?.ecosystem !== 'npm' || String(a.package?.name).toLowerCase() !== name.toLowerCase() || !Array.isArray(a.ranges)) continue;
+    if (!isObject(a) || a.package?.ecosystem !== ECOSYSTEMS[eco].osv || normalizeName(eco, String(a.package?.name)) !== want || !Array.isArray(a.ranges)) continue;
     for (const r of a.ranges) {
-      if (isObject(r) && r.type === 'SEMVER') ranges.push(...eventRanges(r.events));
+      if (isObject(r) && types.includes(r.type)) ranges.push(...eventRanges(r.events));
     }
   }
   return ranges;
 }
 
-function toVuln(id: string, name: string, detail: Detail | undefined): OsvVuln {
+function toVuln(id: string, eco: Ecosystem, name: string, detail: Detail | undefined): OsvVuln {
   const malware = id.startsWith('MAL-');
   const vuln: OsvVuln = {
     id,
     severity: detail?.severity ?? (malware ? 'critical' : 'unknown'),
     malware,
     aliases: detail?.aliases ?? [],
-    ranges: detail ? packageRanges(detail, name) : [],
+    ranges: detail ? packageRanges(detail, eco, name) : [],
   };
   if (detail?.summary) vuln.summary = detail.summary;
   return vuln;
 }
 
 /**
- * Looks the entries up in OSV: POST /v1/querybatch in chunks of OSV_BATCH_SIZE, then GET /v1/vulns/<id>
- * for at most OSV_DETAIL_LIMIT ids that aren't in `known` (the ids already in our own data). Results are
- * keyed by formatPackageEntry. Null when OSV can't be reached or answers something unreadable; a single
+ * Looks the entries up in OSV, each with its ecosystem's OSV name: POST /v1/querybatch in chunks of
+ * OSV_BATCH_SIZE, then GET /v1/vulns/<id> for at most OSV_DETAIL_LIMIT ids that aren't in `known` (the ids already
+ * in our own data). Results are keyed by watchKey (npm `name@version`, the others `eco:name@version`). Null when OSV can't be reached or answers something unreadable; a single
  * failed detail request only leaves that id without details.
  */
-export async function osvQueryBatch(entries: PackageEntry[], known: ReadonlySet<string>, fetchImpl: FetchImpl = fetch): Promise<Map<string, OsvResult> | null> {
-  const unique = [...new Map(entries.map(e => [formatPackageEntry(e), e])).values()];
-  const found = new Map<string, { entry: PackageEntry; ids: string[]; complete: boolean }>();
+export async function osvQueryBatch(entries: Entry[], known: ReadonlySet<string>, fetchImpl: FetchImpl = fetch): Promise<Map<string, OsvResult> | null> {
+  const unique = [...new Map(entries.map(e => [watchKey(e), e])).values()];
+  const found = new Map<string, { entry: Entry; ids: string[]; complete: boolean }>();
   try {
     for (let i = 0; i < unique.length; i += OSV_BATCH_SIZE) {
       const chunk = unique.slice(i, i + OSV_BATCH_SIZE);
-      const queries = chunk.map(e => (e.version ? { package: { name: e.name, ecosystem: 'npm' }, version: e.version } : { package: { name: e.name, ecosystem: 'npm' } }));
+      const queries = chunk.map(e => {
+        const pkg = { name: e.name, ecosystem: ECOSYSTEMS[e.ecosystem ?? 'npm'].osv };
+        // OSV's Go versions have no "v" (as osv-scanner sends them)
+        return e.version ? { package: pkg, version: e.ecosystem === 'go' ? stripGoV(e.version) : e.version } : { package: pkg };
+      });
       const body = await getJson(fetchImpl, OSV_BATCH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ queries }) });
       if (!isObject(body) || !Array.isArray(body.results) || body.results.length !== chunk.length) return null;
       for (let j = 0; j < chunk.length; j++) {
         const r = resultIds(body.results[j]);
         if (!r) return null;
-        found.set(formatPackageEntry(chunk[j]), { entry: chunk[j], ...r });
+        found.set(watchKey(chunk[j]), { entry: chunk[j], ...r });
       }
     }
   } catch {
@@ -169,7 +184,7 @@ export async function osvQueryBatch(entries: PackageEntry[], known: ReadonlySet<
 
   const results = new Map<string, OsvResult>();
   for (const [key, f] of found) {
-    results.set(key, { vulns: f.ids.map(id => toVuln(id, f.entry.name, details.get(id))), complete: f.complete });
+    results.set(key, { vulns: f.ids.map(id => toVuln(id, f.entry.ecosystem ?? 'npm', f.entry.name, details.get(id))), complete: f.complete });
   }
   return results;
 }

@@ -4,7 +4,7 @@ import { AlertStore, NPM_RULE_ID, npmUnseenCount } from '../services/intelligenc
 import { ALERT_STORE_EVENT, loadAlertStore, saveAlertSeen } from '../services/intelligence/alertStore';
 
 /**
- * New npm alerts (advisories affecting your packages, alerted by "My npm packages") since the Vulns npm tab was
+ * New package alerts (advisories affecting your packages in any ecosystem, alerted by "My packages") since the Vulns npm tab was
  * last open, for its badge. While `open`, the tab counts as seen: the time is saved in the alert store, again
  * whenever another alert comes in, so the badge stays clear while you look at the tab.
  */
@@ -21,7 +21,7 @@ export function useNpmUnseen(open: boolean): number {
   }, []);
 
   const enabled = settings.alertRules.some(r => r.builtIn === NPM_RULE_ID && r.enabled);
-  const count = store && enabled ? npmUnseenCount(store, settings.npmPackages) : 0;
+  const count = store && enabled ? npmUnseenCount(store, settings.npmPackages, settings.ecosystemPackages) : 0;
 
   useEffect(() => {
     if (!open || count === 0) return;

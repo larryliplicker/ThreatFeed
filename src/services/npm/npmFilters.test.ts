@@ -119,14 +119,14 @@ describe('affectingByAdvisory', () => {
   it('maps each listed advisory to the watched entries it affects, with the matched range', () => {
     const results: PackageResult[] = [
       {
-        entry: { name: 'lodash', version: '4.17.15' }, status: 'affected', malware: false, malwareCheckedDays: 30, osv: 'off',
+        ecosystem: 'npm', entry: { name: 'lodash', version: '4.17.15' }, status: 'affected', malware: false, malwareCheckedDays: 30, osv: 'off',
         advisories: [{ id: 'GHSA-aaaa-aaaa-aaaa', severity: 'critical', vulnerable: '< 4.17.21', patched: '4.17.21', source: 'ghsa' }],
       },
       {
-        entry: { name: 'lodash' }, status: 'no-version', malware: false, malwareCheckedDays: 30, osv: 'off',
+        ecosystem: 'npm', entry: { name: 'lodash' }, status: 'no-version', malware: false, malwareCheckedDays: 30, osv: 'off',
         advisories: [{ id: 'GHSA-aaaa-aaaa-aaaa', severity: 'critical', vulnerable: '< 4.17.21', patched: '4.17.21', source: 'ghsa' }],
       },
-      { entry: { name: 'left-pad' }, status: 'not-affected', malware: false, malwareCheckedDays: 30, osv: 'off', advisories: [] },
+      { ecosystem: 'npm', entry: { name: 'left-pad' }, status: 'not-affected', malware: false, malwareCheckedDays: 30, osv: 'off', advisories: [] },
     ];
     const map = affectingByAdvisory(results);
     expect([...map.keys()]).toEqual(['GHSA-aaaa-aaaa-aaaa']);

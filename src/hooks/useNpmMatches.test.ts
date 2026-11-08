@@ -6,6 +6,8 @@ import type { OsvResult } from '../services/npm/osv';
 
 const settings = { npmPackages: [] as string[], npmOsvLookup: false };
 vi.mock('../context/SettingsContext', () => ({ useSettings: () => ({ settings }) }));
+// No other ecosystem is watched here, so the ecosystem files are never asked for
+vi.mock('../context/FeedContext', () => ({ useFeeds: () => ({ ecosystemAdvisories: {}, ensureEcosystemAdvisories: vi.fn(), ensureNpmAdvisories: vi.fn(), npmAdvisories: null, snapshotGeneratedAt: null }) }));
 const stored = new Map<string, unknown>();
 vi.mock('../services/storage/indexeddb', () => ({
   getStoredValue: vi.fn(async (key: string) => stored.get(key) ?? null),

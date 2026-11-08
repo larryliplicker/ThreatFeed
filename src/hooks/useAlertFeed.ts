@@ -40,8 +40,8 @@ export function groupMatches(matches: AlertMatch[], store: AlertStore): { news: 
 
 /** What the alert rules have matched, for My Feed and the nav badge; reloads whenever the alert store changes */
 export function useAlertFeed(): AlertFeed {
-  // The npm files are only read here, never loaded: with them in (AlertMonitor loads them for the npm rule) npm rows get their summaries
-  const { feeds, articles, vulns, cveIntel, npmAdvisories, npmMalware } = useFeeds();
+  // The package files are only read here, never loaded: with them in (AlertMonitor loads them for the packages rule) package rows get their summaries
+  const { feeds, articles, vulns, cveIntel, npmAdvisories, npmMalware, ecosystemAdvisories } = useFeeds();
   const { settings } = useSettings();
   const [store, setStore] = useState<AlertStore | null>(null);
 
@@ -63,10 +63,10 @@ export function useAlertFeed(): AlertFeed {
       vulns,
       cveIntel,
       feedCategory: id => categories.get(id),
-      npm: { packages: settings.npmPackages, advisories: npmAdvisories, malware: npmMalware },
+      npm: { packages: settings.npmPackages, advisories: npmAdvisories, malware: npmMalware, ecosystemPackages: settings.ecosystemPackages, ecosystems: ecosystemAdvisories },
     }, store);
     return groupMatches(matches, store);
-  }, [store, feeds, articles, vulns, cveIntel, npmAdvisories, npmMalware, settings]);
+  }, [store, feeds, articles, vulns, cveIntel, npmAdvisories, npmMalware, ecosystemAdvisories, settings]);
 
   const markSeen = useCallback(async (kind: AlertRuleKind) => {
     await saveAlertSeen(kind, new Date().toISOString());

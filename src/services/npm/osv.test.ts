@@ -116,6 +116,39 @@ describe('osvQueryBatch', () => {
   });
 });
 
+describe('osvQueryBatch across ecosystems', () => {
+  it('sends each entry with its OSV ecosystem name and keys the answers by the prefixed entry', async () => {
+    const DJANGO_DETAIL = {
+      id: 'PYSEC-2022-1',
+      summary: 'SQL injection',
+      affected: [
+        { package: { ecosystem: 'PyPI', name: 'Django' }, ranges: [{ type: 'ECOSYSTEM', events: [{ introduced: '3.2' }, { fixed: '3.2.14' }] }] },
+        { package: { ecosystem: 'npm', name: 'django' }, ranges: [{ type: 'SEMVER', events: [{ introduced: '0' }] }] },
+      ],
+    };
+    const { impl, calls } = fakeFetch((queries) => ({ results: queries.map((_: unknown, i: number) => (i === 0 ? { vulns: [{ id: 'PYSEC-2022-1' }] } : {})) }), { 'PYSEC-2022-1': DJANGO_DETAIL });
+    const result = await osvQueryBatch([
+      { ecosystem: 'pypi', name: 'django', version: '3.2.0' },
+      { ecosystem: 'maven', name: 'org.apache.logging.log4j:log4j-core', version: '2.14.1' },
+      { ecosystem: 'go', name: 'golang.org/x/net', version: 'v0.17.0' },
+      { ecosystem: 'nuget', name: 'Newtonsoft.Json' },
+      { ecosystem: 'cargo', name: 'serde', version: '1.0.188' },
+      { name: 'lodash', version: '4.17.4' },
+    ], new Set(), impl);
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ queries: [
+      { package: { name: 'django', ecosystem: 'PyPI' }, version: '3.2.0' },
+      { package: { name: 'org.apache.logging.log4j:log4j-core', ecosystem: 'Maven' }, version: '2.14.1' },
+      { package: { name: 'golang.org/x/net', ecosystem: 'Go' }, version: '0.17.0' },
+      { package: { name: 'Newtonsoft.Json', ecosystem: 'NuGet' } },
+      { package: { name: 'serde', ecosystem: 'crates.io' }, version: '1.0.188' },
+      { package: { name: 'lodash', ecosystem: 'npm' }, version: '4.17.4' },
+    ] });
+    expect([...result!.keys()]).toEqual(['pypi:django@3.2.0', 'maven:org.apache.logging.log4j:log4j-core@2.14.1', 'go:golang.org/x/net@v0.17.0', 'nuget:Newtonsoft.Json', 'cargo:serde@1.0.188', 'lodash@4.17.4']);
+    // Ranges come from the PyPI package only (name normalised), ECOSYSTEM ranges included
+    expect(result!.get('pypi:django@3.2.0')!.vulns[0].ranges).toEqual([{ vulnerable: '>= 3.2, < 3.2.14', patched: '3.2.14' }]);
+  });
+});
+
 describe('osvCacheFresh', () => {
   const now = Date.parse('2026-11-04T12:00:00Z');
   it('is fresh for the same list within a day', () => {

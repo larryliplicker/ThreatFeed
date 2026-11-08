@@ -2,8 +2,7 @@
 // of rows, its filters and the stats strip. Pure, so the tab only renders.
 
 import type { NpmAdvisoryData, NpmMalwareData, NpmRange } from './advisories';
-import type { PackageResult, Severity } from './match';
-import { formatPackageEntry } from './semver';
+import { resultKey, type PackageResult, type Severity } from './match';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -44,7 +43,7 @@ export const DEFAULT_NPM_FILTERS: NpmFilters = { severity: '', type: 'vulnerabil
 
 /** A watched entry an advisory affects (or may affect), as matchPackages listed it */
 export interface AffectedEntry {
-  entry: string;
+  entry: string; // as watched: npm `name@version`, other ecosystems prefixed (`pypi:name@version`)
   versioned: boolean; // false for an entry without a version: listed for the package, not known to affect it
   vulnerable: string;
   patched?: string;
@@ -109,7 +108,7 @@ export function filterNpmRows(rows: NpmRow[], f: NpmFilters, affecting: Readonly
 export function affectingByAdvisory(results: PackageResult[]): Map<string, AffectedEntry[]> {
   const map = new Map<string, AffectedEntry[]>();
   for (const r of results) {
-    const entry = formatPackageEntry(r.entry);
+    const entry = resultKey(r);
     for (const a of r.advisories) {
       const hit: AffectedEntry = { entry, versioned: Boolean(r.entry.version), vulnerable: a.vulnerable };
       if (a.patched) hit.patched = a.patched;
