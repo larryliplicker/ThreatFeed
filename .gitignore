@@ -36,6 +36,8 @@ public/data/stats.json
 public/data/entities.json
 public/data/npm-advisories.json
 public/data/npm-malware.json
+public/data/advisories-*.json
+public/data/popular-packages.json
 public/data/content/
 .cache/
 

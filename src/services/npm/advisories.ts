@@ -3,6 +3,8 @@
 // every reviewed npm advisory; public/data/npm-malware.json holds 30 days of malware advisories. Advisory
 // text is untrusted: it is kept as plain text here and must be rendered as text, never as HTML.
 
+import { ECOSYSTEMS, type Ecosystem } from '../packages/ecosystems';
+
 export interface NpmRange { package: string; vulnerable: string; patched?: string }
 
 export interface NpmAdvisory {
@@ -73,12 +75,12 @@ const text = (value: unknown, max: number): string =>
   // eslint-disable-next-line no-control-regex
   typeof value === 'string' ? cap(value.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').trim(), max) : '';
 
-/** The npm entries of a GHSA `vulnerabilities` list. A missing range is kept as '' so matching reads it as unknown */
-function npmRanges(raw: unknown): NpmRange[] {
+/** The entries of a GHSA `vulnerabilities` list for one GitHub ecosystem name. A missing range is kept as '' so matching reads it as unknown */
+function ghsaRanges(raw: unknown, ghsaEcosystem: string): NpmRange[] {
   if (!Array.isArray(raw)) return [];
   const ranges: NpmRange[] = [];
   for (const v of raw) {
-    if (v?.package?.ecosystem !== 'npm') continue;
+    if (v?.package?.ecosystem !== ghsaEcosystem) continue;
     const name = line(v.package.name, 214);
     if (!name) continue;
     const range: NpmRange = { package: name, vulnerable: line(v.vulnerable_version_range, 200) };
@@ -94,12 +96,12 @@ function advisoryUrl(raw: Record<string, any>): string {
 }
 
 /**
- * One reviewed advisory from GET /advisories?ecosystem=npm, with its npm ranges only. Withdrawn advisories
- * are kept, with `withdrawn` set. `cweNames` (CWE id to name) takes precedence over GitHub's names.
+ * One reviewed advisory from GET /advisories?ecosystem=<eco>, with the ranges of that ecosystem only. Withdrawn
+ * advisories are kept, with `withdrawn` set. `cweNames` (CWE id to name) takes precedence over GitHub's names.
  */
-export function normalizeGhsaNpm(raw: unknown, cweNames: Record<string, string> = {}): NpmAdvisory | null {
+export function normalizeGhsa(raw: unknown, eco: Ecosystem, cweNames: Record<string, string> = {}): NpmAdvisory | null {
   if (!isObject(raw) || typeof raw.ghsa_id !== 'string' || !GHSA_RE.test(raw.ghsa_id) || !isDate(raw.published_at)) return null;
-  const ranges = npmRanges(raw.vulnerabilities);
+  const ranges = ghsaRanges(raw.vulnerabilities, ECOSYSTEMS[eco].ghsa);
   if (!ranges.length) return null;
   const url = advisoryUrl(raw);
 
@@ -152,6 +154,9 @@ export function normalizeGhsaNpm(raw: unknown, cweNames: Record<string, string> 
   return advisory;
 }
 
+/** The npm case of normalizeGhsa */
+export const normalizeGhsaNpm = (raw: unknown, cweNames: Record<string, string> = {}): NpmAdvisory | null => normalizeGhsa(raw, 'npm', cweNames);
+
 export function toIndexEntry(a: NpmAdvisory): NpmIndexEntry {
   const ranges = a.ranges.map((r): NpmIndexRange => (r.patched ? [r.package, r.vulnerable, r.patched] : [r.package, r.vulnerable]));
   return a.withdrawn ? [a.id, a.severity, ranges, 1] : [a.id, a.severity, ranges];
@@ -160,7 +165,7 @@ export function toIndexEntry(a: NpmAdvisory): NpmIndexEntry {
 /** A malware advisory (type=malware), one tuple per npm package. Withdrawn ones (false positives) give none */
 export function normalizeGhsaMalware(raw: unknown): NpmMalwareTuple[] {
   if (!isObject(raw) || typeof raw.ghsa_id !== 'string' || !GHSA_RE.test(raw.ghsa_id) || !isDate(raw.published_at) || raw.withdrawn_at) return [];
-  return npmRanges(raw.vulnerabilities).map((r): NpmMalwareTuple => [raw.ghsa_id, r.package, r.vulnerable, raw.published_at]);
+  return ghsaRanges(raw.vulnerabilities, 'npm').map((r): NpmMalwareTuple => [raw.ghsa_id, r.package, r.vulnerable, raw.published_at]);
 }
 
 const lastChange = (a: NpmAdvisory) => (a.updated > a.published ? a.updated : a.published);

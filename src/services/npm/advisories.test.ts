@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeNpmData, decodeNpmMalware, mergeNpmData, mergeNpmMalware, normalizeGhsaMalware, normalizeGhsaNpm, NpmAdvisory, NpmAdvisoryData, NpmMalwareData, toIndexEntry } from './advisories';
+import { decodeNpmData, decodeNpmMalware, mergeNpmData, mergeNpmMalware, normalizeGhsa, normalizeGhsaMalware, normalizeGhsaNpm, NpmAdvisory, NpmAdvisoryData, NpmMalwareData, toIndexEntry } from './advisories';
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.parse('2026-11-04T12:00:00Z');
@@ -120,6 +120,37 @@ describe('normalizeGhsaNpm', () => {
     const a = normalizeGhsaNpm({ ...ghsaReviewed, severity: 'urgent', html_url: 'https://evil.example/x' });
     expect(a?.severity).toBe('unknown');
     expect(a?.url).toBe('https://github.com/advisories/GHSA-xq3m-2v4x-88gg');
+  });
+});
+
+describe('normalizeGhsa', () => {
+  const base = { ghsa_id: 'GHSA-r4hm-p9f9-fj9v', cve_id: 'CVE-2026-55649', summary: 'GeoNode has Stored XSS', severity: 'medium', published_at: '2026-11-06T19:50:34Z', updated_at: '2026-11-06T19:50:35Z' };
+  const pip = { ...base, vulnerabilities: [
+    { package: { ecosystem: 'pip', name: 'GeoNode' }, vulnerable_version_range: '< 5.0.3', first_patched_version: '5.0.3' },
+    { package: { ecosystem: 'npm', name: 'geonode-js' }, vulnerable_version_range: '< 1.0.0', first_patched_version: '1.0.0' },
+  ] };
+  const maven = { ...base, ghsa_id: 'GHSA-92r3-p8c2-3fpx', cve_id: 'CVE-2026-16454', vulnerabilities: [
+    { package: { ecosystem: 'maven', name: 'org.eclipse.hawkbit:hawkbit-ddi-resource' }, vulnerable_version_range: '<= 1.0.3', first_patched_version: '1.0.4' },
+  ] };
+
+  it('keeps only the requested ecosystem\'s ranges (pip)', () => {
+    expect(normalizeGhsa(pip, 'pypi')?.ranges).toEqual([{ package: 'GeoNode', vulnerable: '< 5.0.3', patched: '5.0.3' }]);
+    expect(normalizeGhsa(pip, 'npm')?.ranges).toEqual([{ package: 'geonode-js', vulnerable: '< 1.0.0', patched: '1.0.0' }]);
+  });
+
+  it('reads Maven group:artifact names', () => {
+    expect(normalizeGhsa(maven, 'maven')?.ranges).toEqual([{ package: 'org.eclipse.hawkbit:hawkbit-ddi-resource', vulnerable: '<= 1.0.3', patched: '1.0.4' }]);
+  });
+
+  it('is null for an advisory with nothing in the ecosystem', () => {
+    expect(normalizeGhsa(pip, 'maven')).toBeNull();
+    expect(normalizeGhsa(maven, 'pypi')).toBeNull();
+    expect(normalizeGhsa(maven, 'cargo')).toBeNull();
+  });
+
+  it('maps cargo to GitHub\'s rust name', () => {
+    const rust = { ...base, vulnerabilities: [{ package: { ecosystem: 'rust', name: 'tokio' }, vulnerable_version_range: '< 1.2.0', first_patched_version: '1.2.0' }] };
+    expect(normalizeGhsa(rust, 'cargo')?.ranges[0].package).toBe('tokio');
   });
 });
 

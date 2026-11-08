@@ -36,7 +36,10 @@ const { plainText } = await import('../src/services/feeds/rss');
 const { shardWindow, groupContentByDay, readPreviousShards, planContentShards } = await import('../src/services/contentShards');
 const { countStatsByDay, mergeStats, decodeStats } = await import('../src/services/intelligence/stats');
 const { countEntitiesByDay, mergeTrends, pickPreviousTrends, trendsVocab, decodeTrends, TREND_RECOUNT_DAYS } = await import('../src/services/intelligence/trends');
-const { normalizeGhsaNpm, normalizeGhsaMalware, mergeNpmData, mergeNpmMalware, decodeNpmData, decodeNpmMalware, NPM_RECENT_DAYS, NPM_MALWARE_DAYS } = await import('../src/services/npm/advisories');
+const { normalizeGhsa, normalizeGhsaMalware, mergeNpmData, mergeNpmMalware, decodeNpmData, decodeNpmMalware, NPM_RECENT_DAYS, NPM_MALWARE_DAYS } = await import('../src/services/npm/advisories');
+const { ECOSYSTEMS } = await import('../src/services/packages/ecosystems');
+const { buildPopular, decodePopular } = await import('../src/services/packages/popular');
+const { npmHighImpact, npmTopDependents, npmTopDownloads } = await import('npm-high-impact');
 type Feed = import('../src/types').Feed;
 type FeedHealth = import('../src/types').FeedHealth;
 type Article = import('../src/types').Article;
@@ -57,6 +60,8 @@ type MsrcData = import('../src/types').MsrcData;
 type ActorsData = import('../src/types').ActorsData;
 type TrendsData = import('../src/types').TrendsData;
 type StatsData = import('../src/types').StatsData;
+type Ecosystem = import('../src/services/packages/ecosystems').Ecosystem;
+type PopularData = import('../src/services/packages/popular').PopularData;
 type NpmAdvisory = import('../src/types').NpmAdvisory;
 type NpmAdvisoryData = import('../src/types').NpmAdvisoryData;
 type NpmMalwareData = import('../src/types').NpmMalwareData;
@@ -74,6 +79,11 @@ const STATS_OUT = resolve(root, 'public/data/stats.json'); // daily counts of CV
 const TRENDS_OUT = resolve(root, 'public/data/trends.json'); // mention counts per entity (daily, then weekly), two years: the detail panels' mention history
 const NPM_OUT = resolve(root, 'public/data/npm-advisories.json'); // npm advisories (90 days) and the matching index of all reviewed ones: the npm views and package matching
 const NPM_MALWARE_OUT = resolve(root, 'public/data/npm-malware.json'); // npm malware advisories (30 days): package matching
+const POPULAR_OUT = resolve(root, 'public/data/popular-packages.json'); // popular npm and PyPI names for the typosquat check
+/** The advisory file of an ecosystem: npm keeps its name, the others are advisories-<eco>.json (pypi, maven, go, nuget, cargo) */
+const advisoryFile = (eco: Ecosystem) => (eco === 'npm' ? 'npm-advisories.json' : `advisories-${eco}.json`);
+const advisoryOut = (eco: Ecosystem) => resolve(root, 'public/data', advisoryFile(eco));
+const OTHER_ECOSYSTEMS: Ecosystem[] = ['pypi', 'maven', 'go', 'nuget', 'cargo'];
 const CONTENT_DIR = resolve(root, 'public/data/content'); // article text per publish day (content/<YYYY-MM-DD>.json): the reader and bookmarks, on demand
 const FEEDS_DIR = resolve(root, 'public/data/feeds'); // the RSS feeds and their published-items ledger (seen.json), read by feed readers and the next run
 const FEED_SITE_URL = (process.env.FEED_SITE_URL || 'https://jozeta.github.io/ThreatFeed/').replace(/\/?$/, '/');
@@ -300,11 +310,12 @@ async function loadEpssTop(): Promise<VulnData['epssTop']> {
 
 // ---------- npm advisories (GitHub Advisory Database, carried over between runs) ----------
 
-// Full passes: every reviewed npm advisory (about 8,100, 81 pages, in Nov 2026) and 30 days of malware (about 9,000)
-const NPM_REVIEWED_MAX_PAGES = 120;
+// Full passes: every reviewed advisory of an ecosystem (npm about 8,100, 81 pages, in Nov 2026) and 30 days of npm malware (about 9,000)
+const ECO_REVIEWED_MAX_PAGES = 150;
 const NPM_MALWARE_MAX_PAGES = 120;
 const NPM_OVERLAP_MS = 15 * 60 * 1000; // advisories updated while the last run was fetching aren't missed
-const NPM_LABEL = 'GitHub npm advisories';
+const advisoryLabel = (eco: Ecosystem) => `GitHub ${ECOSYSTEMS[eco].label} advisories`;
+const advisoryId = (eco: Ecosystem) => (eco === 'npm' ? 'npm-advisories' : `advisories-${eco}`);
 const NPM_MALWARE_LABEL = 'GitHub npm malware advisories';
 
 /**
@@ -323,13 +334,13 @@ async function loadPreviousNpmFile<T>(url: string | undefined, decode: (raw: unk
 }
 
 /**
- * Pages of GET /advisories?ecosystem=npm&<query>, most recently updated first, until an advisory updated
+ * Pages of GET /advisories?ecosystem=<ghsa name>&<query>, most recently updated first, until an advisory updated
  * before `stopBefore` (ISO; '' reads to the end) or `maxPages`. `complete` is false when the page cap ended it.
  */
-async function npmAdvisoryPages(query: string, stopBefore: string, maxPages: number, take: (raw: any) => void): Promise<{ requests: number; complete: boolean }> {
+async function advisoryPages(ghsaEcosystem: string, query: string, stopBefore: string, maxPages: number, take: (raw: any) => void): Promise<{ requests: number; complete: boolean }> {
   const headers: Record<string, string> = { 'User-Agent': USER_AGENT, Accept: 'application/vnd.github+json' };
   if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
-  let url: string | null = `https://api.github.com/advisories?ecosystem=npm&${query}&per_page=100&sort=updated&direction=desc`;
+  let url: string | null = `https://api.github.com/advisories?ecosystem=${ghsaEcosystem}&${query}&per_page=100&sort=updated&direction=desc`;
   let requests = 0;
   while (url) {
     if (requests === maxPages) return { requests, complete: false };
@@ -363,29 +374,32 @@ interface NpmFetch {
 }
 
 /**
- * Reviewed npm advisories updated since the previous npm-advisories.json (PREVIOUS_NPM_URL), all of them
- * without one (a full backfill). Null when the previous file couldn't be read, or a backfill didn't finish:
- * nothing is written then, and the workflow keeps the published copy. A failed incremental run keeps the
- * previous updatedAt, so the next run asks for the same window again; one that hit the page cap resets it, so
- * the next run makes a full pass.
+ * Reviewed advisories of an ecosystem updated since its previous file (npm: PREVIOUS_NPM_URL or npm-advisories.json
+ * on the published site; the others advisories-<eco>.json there), all of them without one (a full backfill). Null
+ * when the previous file couldn't be read, or a backfill didn't finish: nothing is written then, and the workflow
+ * keeps the published copy. A failed incremental run keeps the previous updatedAt, so the next run asks for the
+ * same window again; one that hit the page cap resets it, so the next run makes a full pass.
  */
-async function fetchNpmAdvisories(): Promise<NpmFetch | null> {
-  const prev = await loadPreviousNpmFile(process.env.PREVIOUS_NPM_URL || (PREVIOUS_BASE && `${PREVIOUS_BASE}npm-advisories.json`), decodeNpmData);
+async function fetchAdvisories(eco: Ecosystem): Promise<NpmFetch | null> {
+  const id = advisoryId(eco);
+  const label = advisoryLabel(eco);
+  const previousUrl = (eco === 'npm' && process.env.PREVIOUS_NPM_URL) || (PREVIOUS_BASE && `${PREVIOUS_BASE}${advisoryFile(eco)}`);
+  const prev = await loadPreviousNpmFile(previousUrl || undefined, decodeNpmData);
   if (prev.error) {
-    report({ id: 'npm-advisories', label: NPM_LABEL, status: 'failed', detail: `previous file unreadable (${prev.error}), not written` });
+    report({ id, label, status: 'failed', detail: `previous file unreadable (${prev.error}), not written` });
     return null;
   }
   const previous = prev.data;
   const out: NpmFetch = { previous, reviewed: [], updatedAt: new Date().toISOString(), requests: 0, detail: '' };
   try {
-    const r = await npmAdvisoryPages('type=reviewed', npmSince(previous), NPM_REVIEWED_MAX_PAGES, raw => {
-      const a = normalizeGhsaNpm(raw, CWE_NAMES);
+    const r = await advisoryPages(ECOSYSTEMS[eco].ghsa, 'type=reviewed', npmSince(previous), ECO_REVIEWED_MAX_PAGES, raw => {
+      const a = normalizeGhsa(raw, eco, CWE_NAMES);
       if (a) out.reviewed.push(a);
     });
     out.requests = r.requests;
     const fetched = `${out.reviewed.length} advisories in ${out.requests} requests`;
     if (!r.complete && !previous) {
-      report({ id: 'npm-advisories', label: NPM_LABEL, status: 'failed', detail: `backfill stopped at the ${NPM_REVIEWED_MAX_PAGES}-page cap (${fetched}), not written` });
+      report({ id, label, status: 'failed', detail: `backfill stopped at the ${ECO_REVIEWED_MAX_PAGES}-page cap (${fetched}), not written` });
       return null;
     }
     if (!r.complete) out.updatedAt = new Date(0).toISOString();
@@ -393,13 +407,55 @@ async function fetchNpmAdvisories(): Promise<NpmFetch | null> {
   } catch (err) {
     out.error = errorText(err);
     if (!previous) {
-      report({ id: 'npm-advisories', label: NPM_LABEL, status: 'failed', detail: `backfill failed (${out.error}), not written` });
+      report({ id, label, status: 'failed', detail: `backfill failed (${out.error}), not written` });
       return null;
     }
     out.updatedAt = previous.updatedAt;
     out.detail = `${out.error}; kept the data from ${previous.updatedAt}`;
   }
   return out;
+}
+
+// ---------- Popular package names (typosquat check) ----------
+
+const POPULAR_REFRESH_HOURS = 24;
+const PYPI_TOP_URL = 'https://hugovk.dev/top-pypi-packages/top-pypi-packages.min.json';
+
+/**
+ * data/popular-packages.json: copied from the previous file while it is under a day old, otherwise rebuilt (npm from
+ * the npm-high-impact package, PyPI from hugovk's monthly list). If the PyPI list can't be fetched its previous
+ * list is kept, or is empty when there never was one (the check is then skipped for PyPI).
+ */
+async function buildPopularNames(): Promise<PopularData> {
+  const label = 'Popular package names';
+  let previous: PopularData | null = null;
+  if (PREVIOUS_BASE) {
+    try {
+      previous = decodePopular(await getJson(`${PREVIOUS_BASE}popular-packages.json`, 60000));
+    } catch { /* none yet, or unreadable: rebuilt below */ }
+  }
+  if (previous && hoursSince(previous.builtAt) < POPULAR_REFRESH_HOURS) {
+    report({ id: 'popular-packages', label, status: 'cached', count: previous.npm.allow.length + previous.pypi.allow.length, detail: `copied, built ${previous.builtAt}` });
+    return previous;
+  }
+  let pypi: string[] | null = null;
+  let error = '';
+  try {
+    const raw = await getJson(PYPI_TOP_URL, 60000);
+    const rows = Array.isArray(raw?.rows) ? raw.rows.map((r: any) => r?.project).filter((n: unknown): n is string => typeof n === 'string') : [];
+    if (rows.length < 1000) throw new Error(`only ${rows.length} rows`);
+    pypi = rows;
+  } catch (err) {
+    error = errorText(err);
+  }
+  const built = buildPopular({ highImpact: npmHighImpact, topDependents: npmTopDependents, topDownloads: npmTopDownloads }, pypi ?? []);
+  if (!pypi && previous) built.pypi = previous.pypi;
+  report({
+    id: 'popular-packages', label, status: pypi ? 'ok' : previous?.pypi.allow.length ? 'cached' : 'failed',
+    count: built.npm.allow.length + built.pypi.allow.length,
+    detail: pypi ? `${built.npm.allow.length} npm, ${built.pypi.allow.length} PyPI names` : `PyPI list: ${error}; ${previous?.pypi.allow.length ? 'kept the previous list' : 'no PyPI names'}`,
+  });
+  return built;
 }
 
 /**
@@ -421,7 +477,7 @@ async function fetchNpmMalware(): Promise<{ data: NpmMalwareData; requests: numb
   const withdrawn: string[] = [];
   let requests = 0;
   try {
-    const m = await npmAdvisoryPages('type=malware', since > windowFrom ? since : windowFrom, NPM_MALWARE_MAX_PAGES, raw => {
+    const m = await advisoryPages('npm', 'type=malware', since > windowFrom ? since : windowFrom, NPM_MALWARE_MAX_PAGES, raw => {
       if (raw?.withdrawn_at && typeof raw.ghsa_id === 'string') withdrawn.push(raw.ghsa_id);
       else fetched.push(...normalizeGhsaMalware(raw));
     });
@@ -756,7 +812,15 @@ const dailyPromise = Promise.all([rlPromise, previousActorsPromise])
   .then(([rl, previousActors]) => loadDailySources(previousIntel, rl.updates, !previousActors?.actors.length));
 const kevEntries = await loadKev();
 const vulnSourcesPromise = Promise.all([loadNvdData(new Set(kevEntries.map(k => k.cve))), loadAdvisories(), loadEpssTop()]);
-const npmPromise = fetchNpmAdvisories();
+const npmPromise = fetchAdvisories('npm');
+// One ecosystem at a time (after npm): a first backfill is many pages, and GitHub's API likes serial requests
+const ecoAdvisoriesPromise = (async () => {
+  await npmPromise;
+  const out: Partial<Record<Ecosystem, NpmFetch | null>> = {};
+  for (const eco of OTHER_ECOSYSTEMS) out[eco] = await fetchAdvisories(eco);
+  return out;
+})();
+const popularPromise = buildPopularNames();
 const npmMalwarePromise = fetchNpmMalware();
 const { feeds, results } = await fetchFeeds();
 const articles = results.flatMap(r => r.articles);
@@ -771,7 +835,7 @@ const notable = (nvd?.cache.records ?? []).filter(r => (r.score ?? 0) >= 9).sort
 const watchable = (nvd?.cache.records ?? []).filter(r => (r.score ?? 0) >= 7 && (r.score ?? 0) < 9).sort((a, b) => b.published.localeCompare(a.published));
 
 // The npm advisories' CVEs get fresh EPSS scores at most daily (epssAt); between refreshes they keep theirs
-const [npm, npmMalware] = await Promise.all([npmPromise, npmMalwarePromise]);
+const [npm, npmMalware, ecoFetches, popular] = await Promise.all([npmPromise, npmMalwarePromise, ecoAdvisoriesPromise, popularPromise]);
 const npmRecentFrom = new Date(Date.now() - NPM_RECENT_DAYS * DAY_MS).toISOString();
 const npmEpssCves = npm && hoursSince(npm.previous?.epssAt) >= 24
   ? [...npm.reviewed, ...(npm.previous?.recent ?? [])].filter(a => a.published >= npmRecentFrom || a.updated >= npmRecentFrom).flatMap(a => a.cves)
@@ -797,10 +861,26 @@ if (npm) {
   if (npmScores.size) npmData.epssAt = new Date().toISOString();
   report({
     id: 'npm-advisories',
-    label: NPM_LABEL,
+    label: advisoryLabel('npm'),
     status: npm.error ? 'cached' : 'ok',
     count: npmData.index.length,
     detail: `${npm.detail}; ${npmData.recent.length} detailed (${NPM_RECENT_DAYS}d)${npmScores.size ? `, EPSS refreshed for ${npmScores.size} CVEs` : ''}`,
+  });
+}
+// The other ecosystems' advisories: KEV applied, EPSS carried over from the previous file (no extra EPSS requests)
+const ecoData: Partial<Record<Ecosystem, NpmAdvisoryData>> = {};
+for (const eco of OTHER_ECOSYSTEMS) {
+  const f = ecoFetches[eco];
+  if (!f) continue;
+  const data = mergeNpmData(f.previous, f.reviewed, new Set(kevEntries.map(k => k.cve)), new Map(), Date.now());
+  data.updatedAt = f.updatedAt;
+  ecoData[eco] = data;
+  report({
+    id: advisoryId(eco),
+    label: advisoryLabel(eco),
+    status: f.error ? 'cached' : 'ok',
+    count: data.index.length,
+    detail: `${f.detail}; ${data.recent.length} detailed (${NPM_RECENT_DAYS}d)`,
   });
 }
 const kevById = new Map(kevEntries.map(k => [k.cve, k]));
@@ -1075,6 +1155,15 @@ const npmJson = npmData ? JSON.stringify(npmData) : '';
 if (npmData) writeFileSync(NPM_OUT, npmJson);
 const npmMalwareJson = npmMalware ? JSON.stringify(npmMalware.data) : '';
 if (npmMalware) writeFileSync(NPM_MALWARE_OUT, npmMalwareJson);
+const ecoJson: Partial<Record<Ecosystem, string>> = {};
+for (const eco of OTHER_ECOSYSTEMS) {
+  const data = ecoData[eco];
+  if (!data) continue;
+  ecoJson[eco] = JSON.stringify(data);
+  writeFileSync(advisoryOut(eco), ecoJson[eco]!);
+}
+const popularJson = JSON.stringify(popular);
+writeFileSync(POPULAR_OUT, popularJson);
 
 const healthy = results.filter(r => r.health.status === 'healthy').length;
 const mb = (s: string) => `${(s.length / 1e6).toFixed(2)} MB`;
@@ -1101,6 +1190,14 @@ const gzKb = (text: string) => gzipSync(text).length / 1024;
 console.log(npmData
   ? `npm advisories: ${npmData.index.length} reviewed in the index (${npmData.index.filter(e => e[3]).length} withdrawn), ${npmData.recent.length} detailed (${NPM_RECENT_DAYS}d), ${npm?.requests ?? 0} GitHub requests, ${(npmJson.length / 1024).toFixed(0)} KB, ${gzKb(npmJson).toFixed(0)} KB gzipped${gzKb(npmJson) > 800 ? ' (over the 800 KB gzipped budget)' : ''}`
   : `npm advisories: not written (${sources.find(x => x.id === 'npm-advisories')?.detail ?? 'no data'})`);
+for (const eco of OTHER_ECOSYSTEMS) {
+  const data = ecoData[eco];
+  const text = ecoJson[eco] ?? '';
+  console.log(data
+    ? `${ECOSYSTEMS[eco].label} advisories: ${data.index.length} reviewed in the index (${data.index.filter(e => e[3]).length} withdrawn), ${data.recent.length} detailed (${NPM_RECENT_DAYS}d), ${ecoFetches[eco]?.requests ?? 0} GitHub requests, ${(text.length / 1024).toFixed(0)} KB, ${gzKb(text).toFixed(0)} KB gzipped${gzKb(text) > 800 ? ' (over the 800 KB gzipped budget)' : ''}`
+    : `${ECOSYSTEMS[eco].label} advisories: not written (${sources.find(x => x.id === advisoryId(eco))?.detail ?? 'no data'})`);
+}
+console.log(`Popular names: ${popular.npm.allow.length} npm (${popular.npm.targets.length} targets), ${popular.pypi.allow.length} PyPI (${popular.pypi.targets.length} targets), ${(popularJson.length / 1024).toFixed(0)} KB, ${gzKb(popularJson).toFixed(0)} KB gzipped`);
 console.log(npmMalware
   ? `npm malware: ${npmMalware.data.entries.length} packages (${new Set(npmMalware.data.entries.map(m => m[0])).size} advisories, ${NPM_MALWARE_DAYS}d), ${npmMalware.requests} GitHub requests, ${(npmMalwareJson.length / 1024).toFixed(0)} KB, ${gzKb(npmMalwareJson).toFixed(0)} KB gzipped${gzKb(npmMalwareJson) > 600 ? ' (over the 600 KB gzipped budget)' : ''}`
   : `npm malware: not written (${sources.find(x => x.id === 'npm-malware')?.detail ?? 'no data'})`);
