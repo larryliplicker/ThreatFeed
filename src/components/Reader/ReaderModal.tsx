@@ -539,6 +539,7 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
             {content ? (
               <div
                 ref={contentRef}
+                // reviewed: safeContent is sanitizeHtml(content), a DOMPurify allow-list (no style/on* attributes, DOMPurify's URI filter)
                 dangerouslySetInnerHTML={{ __html: safeContent }}
                 className="space-y-4 overflow-x-auto break-words reader-html-content"
               />

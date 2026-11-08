@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeHtml, safeHttpUrl } from './sanitizer';
+import { sanitizeHtml, safeHttpUrl, stripHtmlToText } from './sanitizer';
 
 const parse = (html: string) => {
   const root = document.createElement('div');
@@ -75,5 +75,23 @@ describe('safeHttpUrl', () => {
     expect(safeHttpUrl('data:text/html,x')).toBe('');
     expect(safeHttpUrl('')).toBe('');
     expect(safeHttpUrl(undefined)).toBe('');
+  });
+});
+
+describe('stripHtmlToText', () => {
+  it('returns plain text with entities decoded and whitespace collapsed', () => {
+    expect(stripHtmlToText('<p>Fish &amp; chips</p>\n\n<b>now</b>')).toBe('Fish & chips now');
+  });
+  it('drops script and style contents', () => {
+    expect(stripHtmlToText('a<script>alert(1)</script><style>p{}</style>b')).toBe('ab');
+  });
+  it('never touches the live document while parsing', () => {
+    const before = document.body.innerHTML;
+    stripHtmlToText('<img src=x onerror="document.body.dataset.pwned=1">x');
+    expect(document.body.dataset.pwned).toBeUndefined();
+    expect(document.body.innerHTML).toBe(before);
+  });
+  it('returns an empty string for empty input', () => {
+    expect(stripHtmlToText('')).toBe('');
   });
 });

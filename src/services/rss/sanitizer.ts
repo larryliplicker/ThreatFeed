@@ -50,9 +50,10 @@ export function sanitizeHtml(rawHtml: string): string {
  */
 export function stripHtmlToText(html: string): string {
   if (!html) return '';
-  const tmp = document.createElement('div');
-  tmp.innerHTML = DOMPurify.sanitize(html, { ALLOWED_TAGS: [] });
-  const text = tmp.textContent || tmp.innerText || '';
+  // DOMPurify drops the tags (and script/style contents); DOMParser then decodes the entities in an
+  // inert document (no scripts run, nothing loads), so no innerHTML is needed.
+  const doc = new DOMParser().parseFromString(DOMPurify.sanitize(html, { ALLOWED_TAGS: [] }), 'text/html');
+  const text = doc.body.textContent || '';
   return text.replace(/\s+/g, ' ').trim();
 }
 
