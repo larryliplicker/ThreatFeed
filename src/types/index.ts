@@ -453,7 +453,8 @@ export interface UserSettings {
   mutedKeywords: string[]; // articles mentioning these are hidden everywhere (except bookmarks)
   frontPageHiddenCategories: string[]; // categories left off the newspaper front page
   savedSearches: string[];
-  hiddenVulnVendors: string[]; // KEV vendors left off the Vulnerabilities page
+  hiddenVulnVendors: string[]; // KEV vendors left off the Vulnerabilities page (legacy mode, when shownVulnVendors is null)
+  shownVulnVendors: string[] | null; // allow-list of KEV vendors shown on the Vulnerabilities page; null = everything except hiddenVulnVendors
   npmPackages: string[]; // npm packages to watch for advisories: `name` (any version) or `name@exact.version`
   npmOsvLookup: boolean; // also query OSV.dev for the full history of the watched packages (sends names and versions to Google)
   watchedCves: string[]; // CVEs the user follows: alerts on KEV listing, EPSS jumps and new coverage

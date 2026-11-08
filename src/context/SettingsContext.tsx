@@ -5,6 +5,7 @@ import { ALERT_GAP_OPTIONS, createBuiltInRules, migrateAlertRules } from '../ser
 import { migrateTvInterval, parseTvAnimationSpeed, parseTvTileSize } from '../services/tv/tvSettings';
 import { DEFAULT_WATCHLIST_KEYWORDS, WATCHLIST_DEFAULTS_VERSION, upgradeWatchlistKeywords } from '../services/intelligence/watchlist';
 import { SETTINGS_DEFAULTS_VERSION, migrateDefaults } from '../services/settingsMigrations';
+import { DEFAULT_SHOWN_VENDORS, cleanShownVendors } from '../services/intelligence/vendorFilter';
 import { cleanPackageList } from '../services/npm/packageList';
 import { cleanSyncLog, recordListChanges } from '../services/sync/syncLog';
 
@@ -102,6 +103,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   frontPageHiddenCategories: [],
   savedSearches: [],
   hiddenVulnVendors: [],
+  shownVulnVendors: [...DEFAULT_SHOWN_VENDORS],
   npmPackages: [],
   npmOsvLookup: false,
   watchedCves: [],
@@ -112,6 +114,54 @@ export const DEFAULT_SETTINGS: UserSettings = {
   alertRules: createBuiltInRules(false, new Date()),
   alertGapHours: 1,
 };
+
+/** Cleans and validates settings read from IndexedDB (or a restored backup) and runs the changed-defaults migrations */
+export function loadSavedSettings(saved: UserSettings): UserSettings {
+  // Migrate defaults for new fields: migrate degraded proxies to corsfix
+  const rawProxy = (saved as any).proxyMode;
+  const validProxy = (rawProxy === 'corsproxy' || rawProxy === 'allorigins') 
+    ? 'corsfix' 
+    : (rawProxy || 'corsfix');
+
+  const cleaned: UserSettings = {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    fontFamily: saved.fontFamily || 'serif',
+    containerWidth: saved.containerWidth || 'wide',
+    proxyMode: validProxy,
+    maxArticlesPerFeed: typeof saved.maxArticlesPerFeed === 'number' ? saved.maxArticlesPerFeed : 25,
+    maxArticleAgeDays: typeof saved.maxArticleAgeDays === 'number' ? saved.maxArticleAgeDays : 30,
+    autoRefreshFeedCooldownHours: typeof saved.autoRefreshFeedCooldownHours === 'number' ? saved.autoRefreshFeedCooldownHours : DEFAULT_SETTINGS.autoRefreshFeedCooldownHours,
+    tvIntervalSeconds: migrateTvInterval(saved),
+    tvTileSize: parseTvTileSize(saved.tvTileSize),
+    tvAnimationSpeed: parseTvAnimationSpeed(saved.tvAnimationSpeed),
+    tvQrCodes: saved.tvQrCodes === true,
+    disabledCategories: Array.isArray(saved.disabledCategories) ? saved.disabledCategories.filter((v: unknown) => typeof v === 'string') : [],
+    tvTransition: saved.tvTransition === 'fade' || saved.tvTransition === 'slide' || saved.tvTransition === 'reveal' ? saved.tvTransition : DEFAULT_SETTINGS.tvTransition,
+    watchlistKeywords: Array.isArray(saved.watchlistKeywords)
+      ? upgradeWatchlistKeywords(saved.watchlistKeywords, saved.watchlistDefaultsVersion ?? 1)
+      : DEFAULT_WATCHLIST_KEYWORDS,
+    watchlistDefaultsVersion: WATCHLIST_DEFAULTS_VERSION,
+    defaultsVersion: SETTINGS_DEFAULTS_VERSION,
+    newspaperSections: Array.isArray(saved.newspaperSections) && saved.newspaperSections.length > 0 ? saved.newspaperSections : DEFAULT_NEWSPAPER_SECTIONS,
+    bookmarkFolders: Array.isArray(saved.bookmarkFolders) && saved.bookmarkFolders.length > 0 ? saved.bookmarkFolders : DEFAULT_BOOKMARK_FOLDERS,
+    clusteringEnabled: typeof saved.clusteringEnabled === 'boolean' ? saved.clusteringEnabled : DEFAULT_SETTINGS.clusteringEnabled,
+    sectionsEnabled: typeof saved.sectionsEnabled === 'boolean' ? saved.sectionsEnabled : DEFAULT_SETTINGS.sectionsEnabled,
+    hiddenVulnVendors: Array.isArray(saved.hiddenVulnVendors) ? saved.hiddenVulnVendors.filter((v: unknown) => typeof v === 'string') : [],
+    shownVulnVendors: cleanShownVendors(saved.shownVulnVendors),
+    npmPackages: cleanPackageList(saved.npmPackages),
+    npmOsvLookup: saved.npmOsvLookup === true,
+    watchedCves: Array.isArray(saved.watchedCves) ? saved.watchedCves.filter((v: unknown) => typeof v === 'string') : [],
+    alertRules: migrateAlertRules(saved, new Date()),
+    alertGapHours: (ALERT_GAP_OPTIONS as readonly number[]).includes(saved.alertGapHours as number) ? saved.alertGapHours : 1,
+    syncLog: cleanSyncLog(saved.syncLog),
+  };
+  // Changed defaults move only settings still at the old default; a missing version (old install, backup) counts as 0
+  const savedDefaultsVersion = typeof saved.defaultsVersion === 'number' ? saved.defaultsVersion : 0;
+  const migrated = migrateDefaults(cleaned, savedDefaultsVersion);
+  delete (migrated as unknown as Record<string, unknown>).tvIntervalMinutes;
+  return migrated;
+}
 
 interface SettingsContextType {
   settings: UserSettings;
@@ -130,48 +180,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     getSettingsFromDB().then((saved) => {
       if (saved) {
-        // Migrate defaults for new fields: migrate degraded proxies to corsfix
-        const rawProxy = (saved as any).proxyMode;
-        const validProxy = (rawProxy === 'corsproxy' || rawProxy === 'allorigins') 
-          ? 'corsfix' 
-          : (rawProxy || 'corsfix');
-
-        const cleaned: UserSettings = {
-          ...DEFAULT_SETTINGS,
-          ...saved,
-          fontFamily: saved.fontFamily || 'serif',
-          containerWidth: saved.containerWidth || 'wide',
-          proxyMode: validProxy,
-          maxArticlesPerFeed: typeof saved.maxArticlesPerFeed === 'number' ? saved.maxArticlesPerFeed : 25,
-          maxArticleAgeDays: typeof saved.maxArticleAgeDays === 'number' ? saved.maxArticleAgeDays : 30,
-          autoRefreshFeedCooldownHours: typeof saved.autoRefreshFeedCooldownHours === 'number' ? saved.autoRefreshFeedCooldownHours : DEFAULT_SETTINGS.autoRefreshFeedCooldownHours,
-          tvIntervalSeconds: migrateTvInterval(saved),
-          tvTileSize: parseTvTileSize(saved.tvTileSize),
-          tvAnimationSpeed: parseTvAnimationSpeed(saved.tvAnimationSpeed),
-          tvQrCodes: saved.tvQrCodes === true,
-          disabledCategories: Array.isArray(saved.disabledCategories) ? saved.disabledCategories.filter((v: unknown) => typeof v === 'string') : [],
-          tvTransition: saved.tvTransition === 'fade' || saved.tvTransition === 'slide' || saved.tvTransition === 'reveal' ? saved.tvTransition : DEFAULT_SETTINGS.tvTransition,
-          watchlistKeywords: Array.isArray(saved.watchlistKeywords)
-            ? upgradeWatchlistKeywords(saved.watchlistKeywords, saved.watchlistDefaultsVersion ?? 1)
-            : DEFAULT_WATCHLIST_KEYWORDS,
-          watchlistDefaultsVersion: WATCHLIST_DEFAULTS_VERSION,
-          defaultsVersion: SETTINGS_DEFAULTS_VERSION,
-          newspaperSections: Array.isArray(saved.newspaperSections) && saved.newspaperSections.length > 0 ? saved.newspaperSections : DEFAULT_NEWSPAPER_SECTIONS,
-          bookmarkFolders: Array.isArray(saved.bookmarkFolders) && saved.bookmarkFolders.length > 0 ? saved.bookmarkFolders : DEFAULT_BOOKMARK_FOLDERS,
-          clusteringEnabled: typeof saved.clusteringEnabled === 'boolean' ? saved.clusteringEnabled : true,
-          sectionsEnabled: typeof saved.sectionsEnabled === 'boolean' ? saved.sectionsEnabled : true,
-          hiddenVulnVendors: Array.isArray(saved.hiddenVulnVendors) ? saved.hiddenVulnVendors.filter((v: unknown) => typeof v === 'string') : [],
-          npmPackages: cleanPackageList(saved.npmPackages),
-          npmOsvLookup: saved.npmOsvLookup === true,
-          watchedCves: Array.isArray(saved.watchedCves) ? saved.watchedCves.filter((v: unknown) => typeof v === 'string') : [],
-          alertRules: migrateAlertRules(saved, new Date()),
-          alertGapHours: (ALERT_GAP_OPTIONS as readonly number[]).includes(saved.alertGapHours as number) ? saved.alertGapHours : 1,
-          syncLog: cleanSyncLog(saved.syncLog),
-        };
-        // Changed defaults move only settings still at the old default; a missing version (old install, backup) counts as 0
-        const savedDefaultsVersion = typeof saved.defaultsVersion === 'number' ? saved.defaultsVersion : 0;
-        const migrated = migrateDefaults(cleaned, savedDefaultsVersion);
-        delete (migrated as unknown as Record<string, unknown>).tvIntervalMinutes;
+        const migrated = loadSavedSettings(saved);
         setSettings(migrated);
         saveSettingsToDB(migrated);
       }

@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS } from '../context/SettingsContext';
 import type { UserSettings } from '../types';
 import { createBuiltInRules } from './intelligence/alertRules';
 import { DEFAULT_WATCHLIST_KEYWORDS, WATCHLIST_V2_DEFAULTS } from './intelligence/watchlist';
+import { DEFAULT_SHOWN_VENDORS } from './intelligence/vendorFilter';
 import { SETTINGS_DEFAULTS_VERSION, migrateDefaults } from './settingsMigrations';
 
 const T = new Date('2026-10-01T00:00:00Z');
@@ -84,5 +85,15 @@ describe('migrateDefaults', () => {
 
   it('treats a bad version as 0', () => {
     expect(migrateDefaults(oldInstall(), NaN).tvIntervalSeconds).toBe(30);
+  });
+
+  it('untouched vendor filter moves to the curated allow-list', () => {
+    expect(migrateDefaults(oldInstall({ shownVulnVendors: null }), 0).shownVulnVendors).toEqual(DEFAULT_SHOWN_VENDORS);
+  });
+
+  it('hidden vendors keep the legacy filter', () => {
+    const out = migrateDefaults(oldInstall({ shownVulnVendors: null, hiddenVulnVendors: ['Acme'] }), 0);
+    expect(out.shownVulnVendors).toBeNull();
+    expect(out.hiddenVulnVendors).toEqual(['Acme']);
   });
 });

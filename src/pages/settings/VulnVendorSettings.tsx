@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useSettings } from '../../context/SettingsContext';
 import { useVulns } from '../../hooks/useVulns';
+import { DEFAULT_SHOWN_VENDORS, setVendorShown, vendorVisible } from '../../services/intelligence/vendorFilter';
 import { ChevronDown, Plus, Search, ShieldAlert, X } from 'lucide-react';
 
 /**
  * Which vendors from the CISA KEV catalog appear on the Vulnerabilities page. Removing a vendor (its x)
- * moves it to the collapsed "Hidden vendors" list, where it can be restored.
+ * moves it to the collapsed "Other vendors" list, where it can be added back. By default only a curated list of
+ * important vendors is shown; "Show all vendors" switches to the legacy mode (everything except the hidden ones).
  */
 export const VulnVendorSettings: React.FC = () => {
   const { settings, updateSettings } = useSettings();
@@ -19,14 +21,16 @@ export const VulnVendorSettings: React.FC = () => {
     for (const k of vulns?.kev ?? []) counts.set(k.vendor, (counts.get(k.vendor) || 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }, [vulns]);
-  const hidden = new Set(settings.hiddenVulnVendors);
+  const filter = { shownVulnVendors: settings.shownVulnVendors, hiddenVulnVendors: settings.hiddenVulnVendors };
   const q = query.trim().toLowerCase();
   const matches = (v: string) => !q || v.toLowerCase().includes(q);
-  const visible = vendors.filter(([v]) => !hidden.has(v));
-  const count = (v: string) => vendors.find(([name]) => name === v)?.[1];
+  const visible = vendors.filter(([v]) => vendorVisible(v, filter));
+  const others = vendors.filter(([v]) => !vendorVisible(v, filter));
 
-  const hide = (vendor: string) => updateSettings({ hiddenVulnVendors: [...settings.hiddenVulnVendors, vendor] });
-  const restore = (vendor: string) => updateSettings({ hiddenVulnVendors: settings.hiddenVulnVendors.filter((v) => v !== vendor) });
+  const hide = (vendor: string) => updateSettings(setVendorShown(filter, vendor, false));
+  const restore = (vendor: string) => updateSettings(setVendorShown(filter, vendor, true));
+  const showAll = () => updateSettings({ shownVulnVendors: null, hiddenVulnVendors: [] });
+  const useCurated = () => updateSettings({ shownVulnVendors: [...DEFAULT_SHOWN_VENDORS], hiddenVulnVendors: [] });
 
   return (
     <section className="bg-theme-surface p-6 rounded-xl border border-theme-border space-y-6">
@@ -35,7 +39,7 @@ export const VulnVendorSettings: React.FC = () => {
         <div>
           <h2 className="font-serif text-xl font-bold text-theme-text">Vulnerability Vendor Filter</h2>
           <p className="font-serif text-xs text-theme-text-muted">
-            Vendors in the CISA Known Exploited Vulnerabilities catalog. Remove the ones you don't run to keep them off the Vulns page.
+            Vendors in the CISA Known Exploited Vulnerabilities catalog. By default only the important vendors are shown. Remove the ones you don't run, or add others from the list below.
           </p>
         </div>
       </div>
@@ -63,7 +67,7 @@ export const VulnVendorSettings: React.FC = () => {
                   </button>
                 </span>
               ))}
-              {visible.length === 0 && <span className="text-xs font-mono text-theme-text-muted italic">Every vendor is hidden.</span>}
+              {visible.length === 0 && <span className="text-xs font-mono text-theme-text-muted italic">No vendors shown.</span>}
             </div>
           </div>
 
@@ -74,28 +78,35 @@ export const VulnVendorSettings: React.FC = () => {
               aria-expanded={showHidden}
               className="w-full flex items-center justify-between px-3 py-2.5 text-xs font-mono uppercase tracking-wider text-theme-text-muted hover:text-theme-text"
             >
-              <span>Hidden vendors ({settings.hiddenVulnVendors.length})</span>
+              <span>Other vendors ({others.length})</span>
               <ChevronDown className={`w-4 h-4 transition-transform ${showHidden ? 'rotate-180' : ''}`} />
             </button>
             {showHidden && (
               <div className="px-3 pb-3 space-y-3">
                 <div className="flex flex-wrap gap-2 items-center">
-                  {settings.hiddenVulnVendors.filter(matches).map((v) => (
+                  {others.filter(([v]) => matches(v)).map(([v, n]) => (
                     <span key={v} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono bg-theme-card text-theme-text-muted border border-theme-border">
-                      <span className="line-through decoration-theme-text-muted/50">{v}</span>
-                      {count(v) !== undefined && <span className="opacity-70">{count(v)}</span>}
-                      <button type="button" onClick={() => restore(v)} className="hover:text-theme-accent rounded p-0.5" title={`Show ${v} again`} aria-label={`Show ${v} again`}>
+                      <span>{v}</span>
+                      <span className="opacity-70">{n}</span>
+                      <button type="button" onClick={() => restore(v)} className="hover:text-theme-accent rounded p-0.5" title={`Show ${v} on the Vulns page`} aria-label={`Show ${v}`}>
                         <Plus className="w-3 h-3" />
                       </button>
                     </span>
                   ))}
-                  {settings.hiddenVulnVendors.length === 0 && <span className="text-xs font-mono text-theme-text-muted italic">No hidden vendors.</span>}
+                  {others.length === 0 && <span className="text-xs font-mono text-theme-text-muted italic">No other vendors.</span>}
                 </div>
-                {settings.hiddenVulnVendors.length > 0 && (
-                  <button type="button" onClick={() => updateSettings({ hiddenVulnVendors: [] })} className="text-xs font-mono text-theme-accent hover:underline">
-                    Show all vendors again
-                  </button>
-                )}
+                <div className="flex flex-wrap gap-4">
+                  {(settings.shownVulnVendors || settings.hiddenVulnVendors.length > 0) && (
+                    <button type="button" onClick={showAll} className="text-xs font-mono text-theme-accent hover:underline">
+                      Show all vendors
+                    </button>
+                  )}
+                  {(!settings.shownVulnVendors || settings.shownVulnVendors.length !== DEFAULT_SHOWN_VENDORS.length || settings.shownVulnVendors.some((v) => !DEFAULT_SHOWN_VENDORS.includes(v))) && (
+                    <button type="button" onClick={useCurated} className="text-xs font-mono text-theme-accent hover:underline">
+                      Use the curated list
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>

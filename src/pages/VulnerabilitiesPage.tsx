@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { vendorVisible } from '../services/intelligence/vendorFilter';
 import { Article } from '../types';
 import { useFeeds } from '../context/FeedContext';
 import { useSettings } from '../context/SettingsContext';
@@ -58,9 +59,14 @@ export const VulnerabilitiesPage: React.FC<{ onOpenArticle: (article: Article) =
   const kevIds = useMemo(() => new Set(vulns?.kev.map((k) => k.cve) ?? []), [vulns]);
   // Vendors hidden in Settings drop out of the KEV views (but a CVE still counts as "in KEV" elsewhere)
   const kev = useMemo(() => {
-    const hidden = new Set(settings.hiddenVulnVendors);
-    return (vulns?.kev ?? []).filter((k) => !hidden.has(k.vendor));
-  }, [vulns, settings.hiddenVulnVendors]);
+    const filter = { shownVulnVendors: settings.shownVulnVendors, hiddenVulnVendors: settings.hiddenVulnVendors };
+    return (vulns?.kev ?? []).filter((k) => vendorVisible(k.vendor, filter));
+  }, [vulns, settings.shownVulnVendors, settings.hiddenVulnVendors]);
+  // Vendors in the catalog that the filter leaves off
+  const hiddenVendorCount = useMemo(() => {
+    const filter = { shownVulnVendors: settings.shownVulnVendors, hiddenVulnVendors: settings.hiddenVulnVendors };
+    return new Set((vulns?.kev ?? []).map((k) => k.vendor).filter((v) => !vendorVisible(v, filter))).size;
+  }, [vulns, settings.shownVulnVendors, settings.hiddenVulnVendors]);
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; count?: number; fresh?: number }[] = [
     { id: 'kev', label: 'Known exploited (KEV)', icon: <Flame className="w-4 h-4" />, count: kev.length },
@@ -110,7 +116,7 @@ export const VulnerabilitiesPage: React.FC<{ onOpenArticle: (article: Article) =
         <span ref={ink.inkRef} className="tab-ink" aria-hidden="true" />
       </div>
 
-      {tab === 'kev' && (vulns?.kev.length ? <KevTab kev={kev} hiddenVendorCount={settings.hiddenVulnVendors.length} news={news} exploits={vulns.exploits ?? {}} cweNames={vulns.cweNames ?? {}} stackKeywords={settings.stackKeywords} onOpenCve={openCve} /> : noData('The CISA KEV catalog'))}
+      {tab === 'kev' && (vulns?.kev.length ? <KevTab kev={kev} hiddenVendorCount={hiddenVendorCount} news={news} exploits={vulns.exploits ?? {}} cweNames={vulns.cweNames ?? {}} stackKeywords={settings.stackKeywords} onOpenCve={openCve} /> : noData('The CISA KEV catalog'))}
       {tab === 'new' && (vulns?.nvd ? <NewCvesTab stats={vulns.nvd} notable={vulns.notable} kevIds={kevIds} news={news} exploits={vulns.exploits ?? {}} cweNames={vulns.cweNames ?? {}} onOpenCve={openCve} /> : noData('NVD data'))}
       {tab === 'patch' && <PatchTuesdayView stackKeywords={settings.stackKeywords} onOpenCve={openCve} noData={noData('Patch Tuesday data')} />}
       {tab === 'epss' && (vulns?.epssTop.length ? <ExploitTab epssTop={vulns.epssTop} kev={vulns.kev} kevVisible={kev} exploits={vulns.exploits ?? {}} news={news} onOpenCve={openCve} /> : noData('EPSS data'))}

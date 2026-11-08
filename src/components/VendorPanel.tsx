@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { setVendorShown, vendorVisible } from '../services/intelligence/vendorFilter';
 import { Article, MsrcData, VulnData } from '../types';
 import { useFeeds } from '../context/FeedContext';
 import { useSettings } from '../context/SettingsContext';
@@ -282,7 +283,8 @@ const VendorView: React.FC<HostProps & { vulns: VulnData | null; msrc?: MsrcData
   const stack = settings.stackKeywords;
   const inStack = stack.some((k) => k.toLowerCase() === summary.name.toLowerCase());
   const hiddenName = summary.kevVendor;
-  const hidden = Boolean(hiddenName && settings.hiddenVulnVendors.includes(hiddenName));
+  const filter = { shownVulnVendors: settings.shownVulnVendors, hiddenVulnVendors: settings.hiddenVulnVendors };
+  const hidden = Boolean(hiddenName && !vendorVisible(hiddenName, filter));
 
   return (
     <VendorPanel
@@ -292,9 +294,7 @@ const VendorView: React.FC<HostProps & { vulns: VulnData | null; msrc?: MsrcData
       inStack={inStack}
       hidden={hidden}
       onToggleStack={() => updateSettings({ stackKeywords: inStack ? stack.filter((k) => k.toLowerCase() !== summary.name.toLowerCase()) : [...stack, summary.name] })}
-      onToggleHidden={hiddenName ? () => updateSettings({
-        hiddenVulnVendors: hidden ? settings.hiddenVulnVendors.filter((v) => v !== hiddenName) : [...settings.hiddenVulnVendors, hiddenName],
-      }) : undefined}
+      onToggleHidden={hiddenName ? () => updateSettings(setVendorShown(filter, hiddenName, hidden)) : undefined}
       onOpenCve={(id) => openPanel('cve', id)}
       onOpenProduct={(v, p) => goToPage('vulnerabilities', 'kev', new URLSearchParams({ kevVendor: v, product: `${v} ${p}`, days: '0' }))}
       onOpenArticle={onOpenArticle}
