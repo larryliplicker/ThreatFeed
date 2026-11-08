@@ -389,23 +389,25 @@
   - No notification.
 - [ ] **Step 4: Run** lint, tsc and the suite. Commit `feat(packages): typosquat warnings for npm and PyPI`.
 
-### Task 11: the Packages tab, its charts and the TV (spec Part 1 "UI"; Part 2 item 3)
+### Task 11: the Packages tab, its charts and the TV (spec Part 1 "UI"; Part 2 item 3, as revised)
 
 **Files:**
 - Modify:
   - `src/pages/VulnerabilitiesPage.tsx:71` (label "Packages")
   - `src/pages/vulns/NpmTab.tsx` (ecosystem filter `eco=`, ecosystem label on rows, the chart grid, the My packages donut)
-  - `src/services/charts/figures.ts`: `advisoriesByEcosystem(data, now)`, plus a top affected packages builder if one doesn't exist
+  - `src/services/charts/figures.ts`: `advisoriesByEcosystem(data, now)`
   - `src/services/tv/tiles.ts`, `TvTileCard.tsx`, `npmPanels.tsx`, `NpmDashboard.tsx` (all watched ecosystems; ecosystem label)
   - `src/pages/vulns/npmFilters.ts`
 
 **Behaviour:**
 - **Ecosystem select:** in the existing filter row: All, npm, PyPI, Maven, Go, NuGet, crates.io. The malware section shows only when the filter is All or npm.
-- **Chart grid, exactly 6 cards** (`grid-cols-1 md:grid-cols-2 xl:grid-cols-3`):
-  - By severity, Vulnerabilities vs malware, Fix available, Top weaknesses
-  - **Advisories by ecosystem (30 d)**: a donut over the loaded ecosystems
-  - **Most affected packages (30 d)**: ranked bars
-- **My packages:** the status donut moves to the top of the My packages view.
+- **Chart grid:** only the three existing cards stay, unchanged (`md:grid-cols-2 xl:grid-cols-3`): By severity, Vulnerabilities vs malware, Fix available.
+- **Left `<aside>`** (`NpmTab.tsx` ~308), under "Most advisories (30 days)", in order:
+  1. Top weaknesses (RankedBars, moved)
+  2. **Advisories by ecosystem (30 d)** (donut over the loaded ecosystems)
+  3. My packages status donut (when packages exist, moved)
+  - Each block gets a `SectionTitle` heading and the aside's width, with no new card chrome.
+  - On phones the aside stacks above the list, as today.
 - **TV:** tiles and dashboard panels show a small ecosystem label (as text). The QR code is still the GitHub advisory URL.
 
 - [ ] **Step 1: Write the failing tests:**
@@ -415,10 +417,10 @@
 - [ ] **Step 2: Run.** Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Browser-check:**
-  - `#/vulns/npm` at 1440 px (2 rows of 3), 800 and 390 px, light and dark, with a watched `pypi:` package
+  - `#/vulns/npm` at 1440 px (one row of 3 charts on top; the side column holds Most advisories, Top weaknesses, By ecosystem and My packages), 800 and 390 px, light and dark, with a watched `pypi:` package
   - `#/vulns/npm?dash=1` and `?tv=1`
   - no horizontal scroll and no console errors
-- [ ] **Step 5: Run** lint, tsc and the suite. Commit `feat(packages): Packages tab with ecosystem filter, six charts, and ecosystem-aware TV`.
+- [ ] **Step 5: Run** lint, tsc and the suite. Commit `feat(packages): Packages tab with ecosystem filter, side-column charts, and ecosystem-aware TV`.
 
 ### Task 12: docs
 

@@ -167,12 +167,13 @@ New defaults apply to new installs. For an existing install, a one-time migratio
    - Interval 30 s, tile size X-Small, animation speed Slow.
    - Untouched existing settings migrate (60 s / Medium / Fast are the old defaults).
    - Link params still override per screen.
-3. **npm (Packages) tab charts: exactly 6 chart cards in 2 rows of 3 at `xl`** (2 columns below `xl`, 1 on phones):
-   - By severity, Vulnerabilities vs malware, Fix available, Top weaknesses
-   - **new:** Advisories by ecosystem (from Part 1)
-   - **new:** Most affected packages (ranked bars, 30 d)
-
-   The "My packages" status donut moves out of this grid to the top of the My packages view.
+3. **npm (Packages) tab charts** (user, revised 2026-11-08):
+   - **Top grid:** only the three existing cards, By severity, Vulnerabilities vs malware and Fix available, in one row of 3 at `xl`. They stay unchanged.
+   - **Left column**, under "Most advisories (30 days)" and in the same compact size as that list, in this order:
+     1. Top weaknesses (moved from the grid)
+     2. **new:** Advisories by ecosystem (donut, 30 d, from Part 1)
+     3. My packages status donut (only when packages exist; moved from the grid)
+   - No separate "Most affected packages" chart: "Most advisories (30 days)" already is one.
 4. **Newspaper mode is chronological by default** **(call)**, i.e. the front page becomes what Latest is today:
    - newest-first stream with the "Earlier" divider
    - sections and clustering off by default, still switchable in the view
