@@ -208,3 +208,54 @@ describe('useBreakingDetection with on-demand npm data', () => {
     expect(broke).toEqual([['npm-new']]);
   });
 });
+
+describe('useBreakingDetection with one baseline slot per ecosystem file', () => {
+  const yours = (id: string): TvTile => ({
+    id, kind: 'npm', tone: 'info', source: 'PyPI advisory', time: new Date(NOW - 200 * 86400e3).toISOString(), headline: id, weight: 1,
+    npm: { severity: 'medium', packages: ['django'], vulnerable: '< 2', ids: [id], yours: ['django@1.0.0'] },
+  });
+  let files: { pypi: TvTile[] | null; maven: TvTile[] | null };
+  let broke: string[][];
+  let root: ReturnType<typeof createRoot>;
+
+  function H() {
+    const news = useBreakingNews();
+    useBreakingDetection(news, {
+      page: 'newspaper', data: [files.pypi, files.maven], baseline: [files.pypi, files.maven], synced: true,
+      build: () => [...(files.pypi ?? []), ...(files.maven ?? [])],
+      kevAdded: () => new Map(),
+      acceptsNews: () => true,
+      onBreaking: found => broke.push(found.map(t => t.id)),
+    });
+    return null;
+  }
+  const render = () => act(() => root.render(createElement(H)));
+  const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    files = { pypi: null, maven: null }; broke = [];
+    root = createRoot(document.createElement('div'));
+    render();
+    advance(DETECT_THROTTLE_MS);
+  });
+  afterEach(() => {
+    act(() => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it('a second ecosystem arriving later is starting data; a new advisory after both breaks once', () => {
+    files = { ...files, pypi: [yours('py-a')] };
+    render();
+    advance(DETECT_THROTTLE_MS);
+    files = { ...files, maven: [yours('mv-a'), yours('mv-b')] };
+    render();
+    advance(DETECT_THROTTLE_MS);
+    expect(broke).toEqual([]);
+    files = { ...files, pypi: [yours('py-a'), yours('py-new')] };
+    render();
+    advance(DETECT_THROTTLE_MS);
+    expect(broke).toEqual([['py-new']]);
+  });
+});

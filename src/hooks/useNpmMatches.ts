@@ -51,7 +51,7 @@ export interface NpmMatches {
  * with OSV.dev" on, OSV is asked at most once a day or when the list changes (the answer is kept in IndexedDB);
  * with it off nothing leaves the device.
  */
-export function useNpmMatches(advisories: NpmAdvisoryData | null, malware: NpmMalwareData | null): NpmMatches {
+export function useNpmMatches(advisories: NpmAdvisoryData | null, malware: NpmMalwareData | null, npmFailed = false): NpmMatches {
   const { settings } = useSettings();
   const enabled = settings.npmOsvLookup;
   const npmEntries = useMemo(
@@ -101,13 +101,14 @@ export function useNpmMatches(advisories: NpmAdvisoryData | null, malware: NpmMa
   // undefined: OSV off; null: not (yet) answered for this list, which shows as unavailable
   const osvResults = useMemo(() => (enabled ? (osv?.key === listKey ? osv.results : null) : undefined), [enabled, osv, listKey]);
   const results = useMemo(() => {
-    if (!advisories) return [];
+    // npm's file failed for good: the other ecosystems still match, and npm entries come out unknown ("no data")
+    if (!advisories && !npmFailed) return [];
     // An ecosystem still loading leaves its entries out for now; one that failed shows them as unknown
     const ready = ecoEntries.filter(e => ecoData[e.ecosystem] || ecoFailed.includes(e.ecosystem));
-    if (!ready.length) return matchPackages(npmEntries, advisories, malware, osvResults);
-    const files: AdvisoriesByEcosystem = { ...ecoData, npm: advisories };
+    if (advisories && !ready.length) return matchPackages(npmEntries, advisories, malware, osvResults);
+    const files: AdvisoriesByEcosystem = advisories ? { ...ecoData, npm: advisories } : { ...ecoData };
     return matchPackages([...npmEntries, ...ready], files, malware, osvResults);
-  }, [npmEntries, ecoEntries, ecoData, ecoFailed, advisories, malware, osvResults]);
+  }, [npmEntries, ecoEntries, ecoData, ecoFailed, advisories, malware, osvResults, npmFailed]);
   const affecting = useMemo(() => affectingByAdvisory(results), [results]);
   return { entries, results, affecting, osvChecking, watchedEcos, ecoData, ecoFailed };
 }

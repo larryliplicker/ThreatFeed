@@ -26,3 +26,6 @@ export function seriesColors(series: { label: string; other?: boolean }[], color
     return DONUT_COLORS[rank++ % DONUT_COLORS.length];
   });
 }
+
+/** Package ecosystems by their shown label (ECOSYSTEMS[eco].label), for the donuts on the Packages tab and the TV */
+export const ECO_HEX: Record<string, string> = { npm: '#e11d48', PyPI: '#0ea5e9', Maven: '#f97316', Go: '#10b981', NuGet: '#8b5cf6', 'crates.io': '#f59e0b' };

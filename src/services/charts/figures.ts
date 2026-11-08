@@ -246,6 +246,12 @@ export function advisoriesByEcosystem(files: AdvisoriesByEcosystem, now: number,
   })));
 }
 
+/** The first of each id (an advisory can list packages of several ecosystems, so it can be in several files) */
+function uniqueById<T>(items: T[], id: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  return items.filter((i) => !seen.has(id(i)) && !!seen.add(id(i)));
+}
+
 /** The loaded files as one dataset for the charts that follow the ecosystem filter; null when none is loaded */
 export function mergeAdvisoryFiles(files: AdvisoriesByEcosystem): NpmAdvisoryData | null {
   const all = Object.values(files);
@@ -255,8 +261,8 @@ export function mergeAdvisoryFiles(files: AdvisoriesByEcosystem): NpmAdvisoryDat
     version: 1,
     generatedAt: [...all.map((f) => f.generatedAt)].sort().pop() ?? '',
     updatedAt: [...all.map((f) => f.updatedAt)].sort().pop() ?? '',
-    recent: all.flatMap((f) => f.recent),
-    index: all.flatMap((f) => f.index),
+    recent: uniqueById(all.flatMap((f) => f.recent), (a) => a.id),
+    index: uniqueById(all.flatMap((f) => f.index), (e) => e[0]),
   };
 }
 

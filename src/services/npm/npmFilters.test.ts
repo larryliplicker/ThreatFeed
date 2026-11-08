@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { NpmAdvisory, NpmAdvisoryData, NpmMalwareData } from './advisories';
 import type { PackageResult } from './match';
-import { affectingByAdvisory, DEFAULT_NPM_FILTERS, ecoFromParam, ecosToLoad, ecosystemRows, filterNpmRows, npmRows, npmStats, type NpmFilters } from './npmFilters';
+import { affectingByAdvisory, DEFAULT_NPM_FILTERS, canShowTab, ecoFromParam, packageKey, parsePackageKey, ecosToLoad, ecosystemRows, filterNpmRows, npmRows, npmStats, type NpmFilters } from './npmFilters';
 
 const NOW = Date.parse('2026-11-04T12:00:00Z');
 const daysAgo = (d: number) => new Date(NOW - d * 24 * 60 * 60 * 1000).toISOString();
@@ -154,6 +154,40 @@ describe('npmStats', () => {
   it('caps the top packages at 5', () => {
     const many = { ...DATA, recent: 'abcdefg'.split('').map(c => advisory(`GHSA-${c.repeat(4)}-0000-0000`, { ranges: [{ package: `pkg-${c}`, vulnerable: '< 1.0.0' }] })) };
     expect(npmStats(npmRows(many, null), NOW).topPackages).toHaveLength(5);
+  });
+});
+
+describe('package keys across ecosystems', () => {
+  const py = { ...DATA, recent: [advisory('GHSA-pypy-pypy-pypy', { ranges: [{ package: 'lodash', vulnerable: '< 3', patched: '3' }] })] };
+  const rows = ecosystemRows({ npm: DATA, pypi: py }, null);
+  it('keys npm bare and the others eco:name, and reads them back', () => {
+    expect(packageKey('npm', 'lodash')).toBe('lodash');
+    expect(packageKey('pypi', 'lodash')).toBe('pypi:lodash');
+    expect(parsePackageKey('lodash')).toEqual({ eco: 'npm', name: 'lodash' });
+    expect(parsePackageKey('pypi:lodash')).toEqual({ eco: 'pypi', name: 'lodash' });
+    expect(parsePackageKey('org.apache:core')).toEqual({ eco: 'npm', name: 'org.apache:core' });
+    expect(parsePackageKey('maven:org.apache:core')).toEqual({ eco: 'maven', name: 'org.apache:core' });
+  });
+  it('the package filter: a bare name means npm, eco:name the other ecosystem', () => {
+    const ids = (pkg: string) => filterNpmRows(rows, { ...DEFAULT_NPM_FILTERS, days: 90, pkg }, new Map(), NOW).map(r => r.id);
+    expect(ids('lodash')).not.toContain('GHSA-pypy-pypy-pypy');
+    expect(ids('lodash')).toContain('GHSA-aaaa-aaaa-aaaa');
+    expect(ids('pypi:lodash')).toEqual(['GHSA-pypy-pypy-pypy']);
+  });
+  it('the top list keeps a same-named package of two ecosystems apart', () => {
+    const top = npmStats(rows, NOW).topPackages;
+    expect(top).toContainEqual(['lodash', 1]);
+    expect(top).toContainEqual(['pypi:lodash', 1]);
+  });
+});
+
+describe('canShowTab', () => {
+  it('shows when any requested file loaded, even without npm', () => {
+    expect(canShowTab({ pypi: DATA })).toBe(true);
+    expect(canShowTab({ npm: DATA, pypi: DATA })).toBe(true);
+  });
+  it('keeps the empty state when nothing loaded', () => {
+    expect(canShowTab({})).toBe(false);
   });
 });
 

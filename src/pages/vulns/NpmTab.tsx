@@ -6,7 +6,7 @@ import type { EcosystemAdvisories } from '../../hooks/useNpmAdvisories';
 import { ECOSYSTEMS, type Ecosystem } from '../../services/packages/ecosystems';
 import { type MatchedAdvisory, type PackageResult, type PackageStatus } from '../../services/npm/match';
 import {
-  DEFAULT_NPM_FILTERS, ecoFromParam, ecosystemRows, filterNpmRows, NPM_DAY_RANGES, npmStats, type AffectedEntry, type NpmDays, type NpmFilters, type NpmRow,
+  DEFAULT_NPM_FILTERS, ecoFromParam, ecosystemRows, parsePackageKey, filterNpmRows, NPM_DAY_RANGES, npmStats, type AffectedEntry, type NpmDays, type NpmFilters, type NpmRow,
 } from '../../services/npm/npmFilters';
 import { formatPackageEntry } from '../../services/npm/semver';
 import { usePagedCount } from '../../hooks/usePagedCount';
@@ -14,7 +14,7 @@ import { LoadMoreButton } from '../../components/Common/LoadMoreButton';
 import { BarList, ChartCard, chipClass, SectionTitle } from '../incidents/shared';
 import { StackedBars } from '../../components/charts/StackedBars';
 import { DonutChart } from '../../components/charts/DonutChart';
-import { NEUTRAL_COLOR, SEVERITY_HEX as SEVERITY_COLORS } from '../../components/charts/colors';
+import { ECO_HEX, NEUTRAL_COLOR, SEVERITY_HEX as SEVERITY_COLORS } from '../../components/charts/colors';
 import { RankedBars } from '../../components/charts/RankedBars';
 import { sliceTotal } from '../../components/charts/chartData';
 import { advisoriesByEcosystem, mergeAdvisoryFiles, myPackagesStatus, npmFixShare, npmSeverityShare, npmTopCwes, npmVulnVsMalware } from '../../services/charts/figures';
@@ -37,6 +37,7 @@ const FLAGS = [
   { id: 'cve', label: 'Has a CVE', title: 'The advisory has a CVE id' },
 ] as const;
 const MALWARE_SHOWN = 12;
+const NO_FILES: NpmAdvisoryData = { version: 1, generatedAt: '', updatedAt: '', recent: [], index: [] };
 
 const STATUS: Record<PackageStatus, { label: string; className: string; title: string }> = {
   affected: { label: 'Affected', className: 'bg-rose-600 text-white border-rose-600', title: 'This version is inside a vulnerable range' },
@@ -48,7 +49,6 @@ const STATUS: Record<PackageStatus, { label: string; className: string; title: s
 // package statuses as their badges
 const SEVERITY_HEX: Record<string, string> = { ...SEVERITY_COLORS, Unknown: NEUTRAL_COLOR };
 const STATUS_HEX: Record<string, string> = { Affected: '#e11d48', 'Check manually': '#f59e0b', 'No version': '#f97316', 'Not affected': '#10b981' };
-const ECO_HEX: Record<string, string> = { npm: '#e11d48', PyPI: '#0ea5e9', Maven: '#f97316', Go: '#10b981', NuGet: '#8b5cf6', 'crates.io': '#f59e0b' };
 const KIND_HEX: Record<string, string> = { Vulnerabilities: '#f59e0b', Malware: '#e11d48', 'Fix available': '#10b981', 'No fix': '#e11d48' };
 const colorsBy = (map: Record<string, string>, slices: { label: string }[]) => slices.map((s) => map[s.label] ?? '#94a3b8');
 const notAffectedTitle = (r: PackageResult) => (r.status === 'not-affected' && r.malwareCheckedDays !== null
@@ -57,6 +57,12 @@ const notAffectedTitle = (r: PackageResult) => (r.status === 'not-affected' && r
 
 const osvLabel = (r: PackageResult, checking: boolean) =>
   r.osv === 'off' ? 'OSV off' : checking && r.osv === 'unavailable' ? 'OSV checking…' : r.osv === 'checked' ? 'OSV checked' : 'OSV unavailable';
+
+/** A `package=` key for display: the name, with its ecosystem's label when several ecosystems are listed */
+const packageLabel = (key: string, multi: boolean): string => {
+  const { eco, name } = parsePackageKey(key);
+  return multi || eco !== 'npm' ? `${name} · ${ECOSYSTEMS[eco].label}` : name;
+};
 
 const openAdvisory = (id: string) => openPanel('advisory', id);
 const isGhsa = (id: string) => /^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$/.test(id);
@@ -166,7 +172,7 @@ const Badges: React.FC<{ row: NpmRow }> = ({ row }) => (
 );
 
 interface NpmTabProps {
-  advisories: NpmAdvisoryData;
+  advisories: NpmAdvisoryData | null; // npm's file; null when it didn't load (the tab still shows the other ecosystems)
   malware: NpmMalwareData | null;
   matches: NpmMatches;
   files: EcosystemAdvisories; // the advisory files of the ecosystems the filter asks for
@@ -237,7 +243,7 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, fi
   }, [rows, now]);
 
   // The charts follow the ecosystem filter: they cover the loaded files (the malware reports only where they apply)
-  const merged = useMemo(() => mergeAdvisoryFiles(files.data) ?? { ...advisories, recent: [], index: [] }, [files.data, advisories]);
+  const merged = useMemo(() => mergeAdvisoryFiles(files.data) ?? NO_FILES, [files.data]);
   const severityShare = useMemo(() => npmSeverityShare(merged, now), [merged, now]);
   const vulnVsMalware = useMemo(() => npmVulnVsMalware(merged, shownMalware, now), [merged, shownMalware, now]);
   const fixShare = useMemo(() => npmFixShare(merged, now), [merged, now]);
@@ -256,7 +262,7 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, fi
   return (
     <div className="space-y-6">
       <div>
-        <p className="mb-2 text-[10px] font-mono text-theme-text-muted">Data from {formatRelativeTime(merged.generatedAt || advisories.generatedAt)}</p>
+        <p className="mb-2 text-[10px] font-mono text-theme-text-muted">Data from {formatRelativeTime(merged.generatedAt || advisories?.generatedAt || '')}</p>
         <SectionTitle>My packages{entries.length ? ` (${entries.length})` : ''}</SectionTitle>
         {entries.length === 0 ? (
           <p className="text-sm font-serif text-theme-text-muted">
@@ -329,14 +335,14 @@ export const NpmTab: React.FC<NpmTabProps> = ({ advisories, malware, matches, fi
         <span className="mx-1 text-theme-border">|</span>
         {entries.length > 0 && <button onClick={() => toggleFlag('mine')} className={chipClass(flags.has('mine'))} title="Advisories listed for a package in Settings → My npm packages">Affects my packages</button>}
         {FLAGS.map((f) => <button key={f.id} onClick={() => toggleFlag(f.id)} className={chipClass(flags.has(f.id))} title={f.title}>{f.label}</button>)}
-        {pkg && <button onClick={() => setPkg('')} className={chipClass(true)}>{pkg} ×</button>}
+        {pkg && <button onClick={() => setPkg('')} className={chipClass(true)}>{packageLabel(pkg, multi)} ×</button>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <aside className="space-y-6">
           <div>
             <SectionTitle>Most advisories (30 days)</SectionTitle>
-            <BarList color="bg-amber-500/70" rows={stats.topPackages.map(([p, n]) => ({ key: p, label: p, value: n, active: pkg === p, onClick: () => setPkg(pkg === p ? '' : p) }))} />
+            <BarList color="bg-amber-500/70" rows={stats.topPackages.map(([p, n]) => ({ key: p, label: packageLabel(p, multi), value: n, active: pkg === p, onClick: () => setPkg(pkg === p ? '' : p) }))} />
             {stats.topPackages.length === 0 && <p className="text-xs font-serif italic text-theme-text-muted">None in 30 days.</p>}
           </div>
           <div>

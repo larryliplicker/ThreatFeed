@@ -16,7 +16,7 @@ import { WatchingTab } from './vulns/WatchingTab';
 import { PatchTuesdayTab } from './vulns/PatchTuesdayTab';
 import { NpmTab } from './vulns/NpmTab';
 import { useEcosystemAdvisories, useNpmAdvisories } from '../hooks/useNpmAdvisories';
-import { ecoFromParam, ecosToLoad } from '../services/npm/npmFilters';
+import { canShowTab, ecoFromParam, ecosToLoad } from '../services/npm/npmFilters';
 import { useNpmMatches } from '../hooks/useNpmMatches';
 import { useNpmUnseen } from '../hooks/useNpmUnseen';
 import { articlesByCve } from './vulns/shared';
@@ -33,13 +33,13 @@ const PatchTuesdayView: React.FC<{ stackKeywords: string[]; onOpenCve: (cve: str
 
 /** Loads the npm advisory and malware files only once the npm tab is opened */
 const NpmView: React.FC<{ onOpenCve: (cve: string) => void; noData: React.ReactNode }> = ({ onOpenCve, noData }) => {
-  const { advisories, malware } = useNpmAdvisories();
-  const matches = useNpmMatches(advisories, malware);
+  const { advisories, malware, failed } = useNpmAdvisories();
+  const matches = useNpmMatches(advisories, malware, failed);
   // The ecosystem filter decides which advisory files the tab loads: All is npm and the watched ones, a pick is that one
   const [ecoParam] = useHashParam('eco');
   const eco = ecoFromParam(ecoParam);
   const files = useEcosystemAdvisories(ecosToLoad(eco, matches.watchedEcos));
-  return advisories ? <NpmTab advisories={advisories} malware={malware} matches={matches} files={files} onOpenCve={onOpenCve} /> : <>{noData}</>;
+  return canShowTab(files.data) ? <NpmTab advisories={advisories} malware={malware} matches={matches} files={files} onOpenCve={onOpenCve} /> : <>{noData}</>;
 };
 
 export const VulnerabilitiesPage: React.FC<{ onOpenArticle: (article: Article) => void }> = ({ onOpenArticle }) => {

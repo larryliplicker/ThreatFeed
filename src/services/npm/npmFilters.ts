@@ -99,9 +99,25 @@ export function ecosystemRows(files: AdvisoriesByEcosystem, malware: NpmMalwareD
   return eco.length > 1 ? rows.sort((a, b) => time(b.date) - time(a.date) || a.id.localeCompare(b.id)) : rows;
 }
 
+/** The key of a package in the tab's `package=` filter and the top list: npm's bare (old links keep working), others `eco:name` */
+export const packageKey = (eco: Ecosystem, name: string): string => (eco === 'npm' ? name : `${eco}:${name}`);
+
+/** Reads a `package=` value back: an ecosystem prefix when the text before the first colon is an ecosystem id, else npm */
+export function parsePackageKey(key: string): { eco: Ecosystem; name: string } {
+  const i = key.indexOf(':');
+  const prefix = i > 0 ? key.slice(0, i) : '';
+  if (prefix && Object.prototype.hasOwnProperty.call(ECOSYSTEMS, prefix)) return { eco: prefix as Ecosystem, name: key.slice(i + 1) };
+  return { eco: 'npm', name: key };
+}
+
 /** The tab's eco= value: an ecosystem id, anything else reads as All ('') */
 export function ecoFromParam(param: string): Ecosystem | '' {
   return Object.prototype.hasOwnProperty.call(ECOSYSTEMS, param) ? (param as Ecosystem) : '';
+}
+
+/** The tab shows whenever any requested ecosystem's file has loaded; with none loaded it keeps the empty state */
+export function canShowTab(files: AdvisoriesByEcosystem): boolean {
+  return Object.values(files).some(Boolean);
 }
 
 /** The ecosystems whose advisory files the tab needs: All is npm and the watched ones, a pick is that one alone */
@@ -112,7 +128,8 @@ export function ecosToLoad(eco: Ecosystem | '', watched: Ecosystem[]): Ecosystem
 export function filterNpmRows(rows: NpmRow[], f: NpmFilters, affecting: ReadonlyMap<string, AffectedEntry[]>, now: number): NpmRow[] {
   const since = now - f.days * DAY_MS;
   const q = f.query.trim().toLowerCase();
-  const pkg = f.pkg.toLowerCase();
+  const pkg = f.pkg ? parsePackageKey(f.pkg) : null;
+  const pkgName = pkg?.name.toLowerCase() ?? '';
   return rows.filter((r) =>
     time(r.date) >= since &&
     (f.type === 'all' || r.kind === f.type) &&
@@ -122,7 +139,7 @@ export function filterNpmRows(rows: NpmRow[], f: NpmFilters, affecting: Readonly
     (!f.fix || r.ranges.some((x) => x.patched)) &&
     (!f.kev || r.kev) &&
     (!f.cve || r.cves.length > 0) &&
-    (!pkg || r.packages.some((p) => p.toLowerCase() === pkg)) &&
+    (!pkg || (r.ecosystem === pkg.eco && r.packages.some((p) => p.toLowerCase() === pkgName))) &&
     (!q || `${r.id} ${r.cves.join(' ')} ${r.packages.join(' ')} ${r.summary}`.toLowerCase().includes(q))
   );
 }
@@ -150,7 +167,7 @@ export interface NpmStats {
   critical30: number;
   high30: number;
   malware7: number;
-  topPackages: [string, number][]; // the 5 packages with the most advisories in 30 days
+  topPackages: [string, number][]; // the 5 packages with the most advisories in 30 days, by packageKey
 }
 
 /** The stats strip, over all rows (not the filters). Withdrawn advisories don't count */
@@ -158,7 +175,7 @@ export function npmStats(rows: NpmRow[], now: number): NpmStats {
   const within = (r: NpmRow, days: number) => time(r.date) >= now - days * DAY_MS;
   const vulns30 = rows.filter((r) => r.kind === 'vulnerability' && !r.withdrawn && within(r, 30));
   const counts = new Map<string, number>();
-  for (const r of vulns30) for (const p of r.packages) counts.set(p, (counts.get(p) ?? 0) + 1);
+  for (const r of vulns30) for (const p of r.packages) counts.set(packageKey(r.ecosystem, p), (counts.get(packageKey(r.ecosystem, p)) ?? 0) + 1);
   return {
     last7: vulns30.filter((r) => within(r, 7)).length,
     last30: vulns30.length,

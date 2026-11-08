@@ -21,12 +21,15 @@ import { PanelDef } from './DashboardWall';
 import { VulnCtx, vulnNumberPanels } from './dashPanels';
 import { useNpmAdvisories } from '../../hooks/useNpmAdvisories';
 import { useNpmMatches } from '../../hooks/useNpmMatches';
+import { ECOSYSTEMS, type Ecosystem } from '../../services/packages/ecosystems';
 
 /** Mixed mode's number panels: ids kept apart from story ids */
 const NUM = 'num:';
 const NONE: string[] = []; // stable, so the panels' data memo still hits when a setting is missing
 /** Mixed mode keeps npm advisories to at most 1 in 6 of the stories */
 const NPM_EVERY = 6;
+/** Each other ecosystem's advisory file is its own on-demand source: one baseline slot each */
+const OTHER_ECOS = (Object.keys(ECOSYSTEMS) as Ecosystem[]).filter(e => e !== 'npm');
 
 function useClock(): string {
   const fmt = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -147,7 +150,7 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
     page,
     data: [articles, vulns, cveIntel, victims, incidents, npmData, npmMalware, npmResults, npmOthers],
     // The npm data loads on demand, after the wall has settled: each source's first load is starting data, not news
-    baseline: [npmData, npmMalware, npmOsvAnswered, Object.keys(npmOthers).length || null],
+    baseline: [npmData, npmMalware, npmOsvAnswered, ...OTHER_ECOS.map(e => npmOthers[e] ?? null)],
     synced: initialSyncDone,
     build,
     kevAdded: () => kevAddedMap(ref.current.vulns, ref.current.cveIntel),
