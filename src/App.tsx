@@ -104,12 +104,17 @@ export const App: React.FC = () => {
     [searchIndex, filters.searchQuery]
   );
 
+  // The front page is a newest-first stream (with the "Earlier" divider) while sections and clustering are off;
+  // the flat list layouts always are. Unread keeps the chosen sort.
+  const chronological = activeTab === 'newspaper'
+    && (settings.layout !== 'newspaper' || (settings.sectionsEnabled === false && !settings.clusteringEnabled));
+
   // Calculate filtered articles based on tab and active filters
   const displayArticles = useMemo(() => {
-    // 'unread' enforces the unread filter; 'latest' is always a newest-first stream
+    // 'unread' enforces the unread filter; a chronological front page is a newest-first stream
     const effectiveFilters =
       activeTab === 'unread' ? { ...filters, readStatus: 'unread' as const }
-      : activeTab === 'latest' && !(isSearching && filters.sortBy === 'relevance') ? { ...filters, sortBy: 'newest' as const }
+      : chronological && !(isSearching && filters.sortBy === 'relevance') ? { ...filters, sortBy: 'newest' as const }
       : filters;
 
     return filterAndSortArticles(
@@ -121,25 +126,25 @@ export const App: React.FC = () => {
       {
         searchScores: scores,
         mutedKeywords: settings.mutedKeywords,
-        // Hidden categories only leave the front page; Latest/Unread and the category filter still show them
+        // Hidden categories only leave the front page; Unread and the category filter still show them
         hiddenCategories: activeTab === 'newspaper' && !filters.selectedCategory ? settings.frontPageHiddenCategories : [],
       }
     );
-  }, [articles, filters, activeTab, isSearching, settings.hideReadArticles, feeds, settings.watchlistKeywords, scores, settings.mutedKeywords, settings.frontPageHiddenCategories]);
+  }, [articles, filters, activeTab, chronological, isSearching, settings.hideReadArticles, feeds, settings.watchlistKeywords, scores, settings.mutedKeywords, settings.frontPageHiddenCategories]);
 
-  // Latest only (and only while it is a newest-first stream): where the stories from before the last visit begin
+  // Chronological front page only (and only while it is a newest-first stream): where the stories from before the last visit begin
   const earlierId = useMemo(
-    () => activeTab === 'latest' && visitBaseline !== null && !(isSearching && filters.sortBy === 'relevance')
+    () => chronological && visitBaseline !== null && !(isSearching && filters.sortBy === 'relevance')
       ? firstEarlierId(displayArticles, visitBaseline)
       : null,
-    [activeTab, visitBaseline, isSearching, filters.sortBy, displayArticles]
+    [chronological, visitBaseline, isSearching, filters.sortBy, displayArticles]
   );
 
   // Trending entities, the briefing and similar views jump to a search
   const handleSearch = (query: string) => {
     updateFilter('searchQuery', query);
     updateFilter('sortBy', 'relevance');
-    setActiveTab('latest');
+    setActiveTab('newspaper');
   };
 
   // The reader navigates the list as it was when it opened. Opening an article marks it read,
@@ -216,8 +221,8 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* Filter Bar (Only shown on news feed tabs: newspaper, latest, unread) */}
-      {(activeTab === 'newspaper' || activeTab === 'latest' || activeTab === 'unread') && (
+      {/* Filter Bar (Only shown on news feed tabs: newspaper, unread) */}
+      {(activeTab === 'newspaper' || activeTab === 'unread') && (
         <FilterBar
           isOpen={isFilterOpen}
           onClose={() => setIsFilterOpen(false)}
@@ -226,11 +231,11 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-grow pb-16 sm:pb-8">
-        {(activeTab === 'newspaper' || activeTab === 'latest' || activeTab === 'unread') && (() => {
+        {(activeTab === 'newspaper' || activeTab === 'unread') && (() => {
           const layout = settings.layout;
           const viewProps = { articles: displayArticles, isLoading: isRefreshing, onOpenArticle: handleOpenArticle };
           const earlierProps = { earlierId };
-          return layout === 'newspaper' ? <NewspaperView key={activeTab} {...viewProps} {...earlierProps} onSearch={handleSearch} chronological={activeTab === 'latest'} />
+          return layout === 'newspaper' ? <NewspaperView key={activeTab} {...viewProps} {...earlierProps} onSearch={handleSearch} chronological={chronological} />
             : layout === 'list-thumbnails' ? <ListThumbnailView {...viewProps} {...earlierProps} />
             : <ListView {...viewProps} {...earlierProps} />;
         })()}

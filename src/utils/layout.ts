@@ -7,7 +7,7 @@ export function layoutLocked(route: HashRoute): boolean {
 
 /**
  * Whether the newspaper view groups stories into sections and folds related coverage into clusters.
- * The front page follows the saved settings; chronological views (Latest, My Feed) start with both
+ * The front page follows the saved settings; chronological views (the front page while sections and clustering are off, My Feed) start with both
  * off, so stories run newest first, and their toggles only change that view (`local`).
  */
 export function newspaperModes(

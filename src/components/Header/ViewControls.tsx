@@ -77,8 +77,8 @@ export const ViewControls: React.FC<ViewControlsProps> = ({ className, labelled 
         <span className={labelClass('xl')}>{kind === 'tv' ? 'TV' : 'Dashboard'}</span>
       </button>
     ))}
-    {/* Mixed mode: Latest news with the Vulns numbers mixed in */}
-    {route.page === 'latest' && (
+    {/* Mixed mode: Front-page news with the Vulns numbers mixed in */}
+    {route.page === 'newspaper' && (
       <button
         onClick={() => enterTv('tv', { mix: '1' })}
         title="TV with numbers"

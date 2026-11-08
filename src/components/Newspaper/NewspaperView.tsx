@@ -39,7 +39,7 @@ interface NewspaperViewProps {
   isLoading: boolean;
   onOpenArticle: (article: Article) => void;
   onSearch?: (query: string) => void;
-  earlierId?: string | null; // Latest only: the "Earlier" divider goes above the first stream block holding this story
+  earlierId?: string | null; // Chronological front page only: the "Earlier" divider goes above the first stream block holding this story
   chronological?: boolean; // newest first, sections and clustering off unless toggled in this view
 }
 

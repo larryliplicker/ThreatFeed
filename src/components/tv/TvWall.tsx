@@ -61,8 +61,8 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
   const { settings } = useSettings();
   const tv = useTvSettings();
   const reduced = useReducedMotion();
-  // Mixed mode (Latest only): the Vulns number panels join the queue; Patch Tuesday and the stats load only then
-  const mixed = page === 'latest' && tv.mix;
+  // Mixed mode (front page only): the Vulns number panels join the queue; Patch Tuesday and the stats load only then
+  const mixed = page === 'newspaper' && tv.mix;
   useEffect(() => {
     if (!mixed) return;
     void ensureMsrc();
@@ -95,10 +95,9 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
   const pageTiles = (now: number): TvTile[] => {
     const d = ref.current;
     if (d.npmWall) return d.npmData ? tilesForNpm(d.npmData, d.npmMalware, d.npmResults, now) : [];
-    if (d.page === 'newspaper' || d.page === 'latest') {
+    if (d.page === 'newspaper') {
       const shown = filterAndSortArticles(d.articles, NO_FILTERS, false, d.feeds, d.settings.watchlistKeywords, {
         mutedKeywords: d.settings.mutedKeywords,
-        hiddenCategories: d.page === 'newspaper' ? d.settings.frontPageHiddenCategories : [],
       });
       return tilesForFront(shown, d.settings.stackKeywords, now);
     }

@@ -490,7 +490,7 @@ export type TvTransition = 'fade' | 'slide' | 'reveal';
 export type TvAnimationSpeed = 'slow' | 'medium' | 'fast';
 export type TvTileSize = 'large' | 'medium' | 'small' | 'xsmall';
 
-export type ActiveNavTab = 'newspaper' | 'latest' | 'unread' | 'briefing' | 'feed' | 'ransomware' | 'vulnerabilities' | 'bookmarks' | 'sources' | 'health' | 'settings';
+export type ActiveNavTab = 'newspaper' | 'unread' | 'briefing' | 'feed' | 'ransomware' | 'vulnerabilities' | 'bookmarks' | 'sources' | 'health' | 'settings';
 
 export type AlertRuleKind = 'news' | 'vulns';
 export type BuiltInRule = 'watchlist' | 'stack-news' | 'stack-vulns' | 'watched-cves' | 'npm-packages';

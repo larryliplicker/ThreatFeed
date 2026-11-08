@@ -36,11 +36,11 @@ afterEach(() => act(() => root.unmount()));
 
 describe('TvShell', () => {
   it('starts a fresh wall when the page or the mix changes, so no old tile stays on screen', () => {
-    act(() => root.render(createElement(TvShell, { kind: 'tv', page: 'latest' })));
+    act(() => root.render(createElement(TvShell, { kind: 'tv', page: 'briefing' })));
     act(() => root.render(createElement(TvShell, { kind: 'tv', page: 'newspaper' })));
     settings.mix = true;
     act(() => root.render(createElement(TvShell, { kind: 'tv', page: 'newspaper' })));
-    expect(mounts).toEqual(['latest|false', 'newspaper|false', 'newspaper|true']);
+    expect(mounts).toEqual(['briefing|false', 'newspaper|false', 'newspaper|true']);
   });
   it('shows the npm dashboard on the npm tab of Vulnerabilities, the Vulns dashboard elsewhere on it', () => {
     act(() => root.render(createElement(TvShell, { kind: 'dash', page: 'vulnerabilities', sub: 'npm' })));

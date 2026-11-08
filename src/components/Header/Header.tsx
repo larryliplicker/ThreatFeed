@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   // Phones get these controls in the Filter sheet, which only exists on the news tabs
-  const hasSheet = activeTab === 'newspaper' || activeTab === 'latest' || activeTab === 'unread';
+  const hasSheet = activeTab === 'newspaper' || activeTab === 'unread';
 
   // After the page has scrolled about 10 cm, the status bar and masthead slide up out of view and
   // only the tabs and toolbar stay pinned. A transform (not a height change) keeps the page from jumping.

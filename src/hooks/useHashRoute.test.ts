@@ -40,6 +40,16 @@ describe('hash routes', () => {
     expect(canonicalHash('')).toBeNull();
   });
 
+  it('redirects the removed Latest page (kiosk links included) to the front page with the same params', () => {
+    const route = parseHash('#/latest?tv=1&mix=1&size=small');
+    expect(route.page).toBe('newspaper');
+    expect(route.sub).toBe('');
+    expect(Object.fromEntries(route.params)).toEqual({ tv: '1', mix: '1', size: 'small' });
+    expect(parseHash('#/latest').page).toBe('newspaper');
+    expect(canonicalHash('#/latest?tv=1&mix=1')).toBe('#/?tv=1&mix=1');
+    expect(canonicalHash('#/latest')).toBe('#/');
+  });
+
   it('routes My Feed with its News / Vulns sub-tab', () => {
     const route = parseHash('#/feed/vulns');
     expect(route.page).toBe('feed');
@@ -97,22 +107,22 @@ describe('opening and closing panels', () => {
 
   beforeEach(() => {
     window.history.replaceState(null, '', '#/');
-    window.history.pushState(null, '', '#/latest'); // a page visited in the app before the panels
+    window.history.pushState(null, '', '#/'); // a page visited in the app before the panels
   });
   afterEach(() => vi.restoreAllMocks());
 
   it('closing the panels goes back through their entries, so Back afterwards reopens none', async () => {
     openPanel('vendor', 'Fortinet');
     openPanel('cve', 'CVE-2026-1234');
-    expect(hash()).toBe('#/latest?vendor=Fortinet&cve=CVE-2026-1234');
+    expect(hash()).toBe('#/?vendor=Fortinet&cve=CVE-2026-1234');
     let popped = pops(1);
     closePanel('cve');
     await popped;
-    expect(hash()).toBe('#/latest?vendor=Fortinet');
+    expect(hash()).toBe('#/?vendor=Fortinet');
     popped = pops(1);
     closePanel('vendor');
     await popped;
-    expect(hash()).toBe('#/latest');
+    expect(hash()).toBe('#/');
     popped = pops(1);
     window.history.back(); // the user's Back: the page before, still in the app, with no panel
     await popped;
@@ -127,7 +137,7 @@ describe('opening and closing panels', () => {
     closePanel('cve');
     closePanel('vendor');
     await popped;
-    expect(hash()).toBe('#/latest');
+    expect(hash()).toBe('#/');
   });
 
   it('a deep-linked panel closes in place, without going back out of the app', () => {
@@ -145,22 +155,22 @@ describe('opening and closing panels', () => {
     openPanel('cve', 'CVE-2026-1234');
     const go = vi.spyOn(window.history, 'go');
     closePanel('vendor');
-    expect(hash()).toBe('#/latest?cve=CVE-2026-1234');
+    expect(hash()).toBe('#/?cve=CVE-2026-1234');
     expect(go).not.toHaveBeenCalled();
   });
 
   it('a panel that shows something else under the same key closes Back to what it showed before', async () => {
     openPanel('actor', 'G0007');
     openPanel('actor', 'G0016'); // e.g. malware's "used by" in a panel stacked on the first actor's
-    expect(hash()).toBe('#/latest?actor=G0016');
+    expect(hash()).toBe('#/?actor=G0016');
     let popped = pops(1);
     closePanel('actor');
     await popped;
-    expect(hash()).toBe('#/latest?actor=G0007');
+    expect(hash()).toBe('#/?actor=G0007');
     popped = pops(1);
     closeAllPanels();
     await popped;
-    expect(hash()).toBe('#/latest');
+    expect(hash()).toBe('#/');
   });
 
   it('closing them all after a same-key swap goes back to before the first', async () => {
@@ -169,7 +179,7 @@ describe('opening and closing panels', () => {
     const popped = pops(1);
     closeAllPanels();
     await popped;
-    expect(hash()).toBe('#/latest');
+    expect(hash()).toBe('#/');
   });
 
   it('opening a panel that is already open raises it in place, with no new entry', () => {
@@ -177,7 +187,7 @@ describe('opening and closing panels', () => {
     openPanel('cve', 'CVE-2026-1234');
     const length = window.history.length;
     openPanel('vendor', 'Fortinet');
-    expect(hash()).toBe('#/latest?cve=CVE-2026-1234&vendor=Fortinet');
+    expect(hash()).toBe('#/?cve=CVE-2026-1234&vendor=Fortinet');
     expect(window.history.length).toBe(length);
   });
 
@@ -188,7 +198,7 @@ describe('opening and closing panels', () => {
     const popped = pops(1);
     closeAllPanels();
     await popped;
-    expect(hash()).toBe('#/latest');
+    expect(hash()).toBe('#/');
   });
 
   it('closing them all on a deep link removes every panel parameter in place, keeping the rest', () => {

@@ -14,7 +14,7 @@ export interface HashRoute {
 
 // URL slug for each page (the newspaper is the bare #/)
 const SLUGS: Record<ActiveNavTab, string> = {
-  newspaper: '', latest: 'latest', unread: 'unread', briefing: 'briefing', feed: 'feed', ransomware: 'ransomware',
+  newspaper: '', unread: 'unread', briefing: 'briefing', feed: 'feed', ransomware: 'ransomware',
   vulnerabilities: 'vulns', bookmarks: 'saved', sources: 'sources', health: 'health', settings: 'settings',
 };
 const PAGES = new Map(Object.entries(SLUGS).map(([page, slug]) => [slug, page as ActiveNavTab]));
@@ -27,7 +27,7 @@ function splitHash(hash: string) {
 }
 
 /**
- * An unknown or removed page (#/trends, #/actors) is the newspaper with that page's parameters, so an old
+ * An unknown or removed page (#/trends, #/actors, the old #/latest) is the newspaper with that page's parameters, so an old
  * #/actors?actor=G0007 link still opens the actor panel, now over the newspaper
  */
 export function parseHash(hash: string): HashRoute {

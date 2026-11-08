@@ -6,6 +6,7 @@ The project has no tagged releases yet, so changes are grouped by date. Entries 
 
 ## Unreleased
 
+- The Latest tab is gone: the front page is the newest-first stream (with the "Earlier" divider) while sections and clustering are off, which is now the default. TV and TV+ (mixed mode) live on the front page; old `#/latest…` links, kiosk links included, redirect to `#/…` with the same parameters
 - Vulnerabilities vendor filter is a curated allow-list by default (25 important vendors; others sit under "Other vendors" in Settings, "Show all vendors" restores the old everything-except-hidden mode). Installs with no hidden vendors move to the curated list; installs that hid vendors keep their filter
 - Charts: donuts, ranked bars and histograms on Vulns (KEV by vendor, EPSS histogram, CVSS bands, critical CVEs per day by CWE family), the npm tab (severity, vulnerabilities vs malware, fix available, top CWEs, My packages), Ransomware → Victims (sector, group share, top 5 groups per day) and Briefing (categories, severity per day, top vendors)
 - npm dashboard (`#/vulns/npm?dash=1`) and new chart panels on the Vulns and Ransomware dashboards; TV chart colours no longer depend on the app theme, and Unknown/Other are grey

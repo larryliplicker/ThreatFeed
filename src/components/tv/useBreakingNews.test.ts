@@ -74,7 +74,7 @@ describe('useBreakingDetection', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     tiles = [fresh('a')];
-    synced = true; accepts = false; page = 'latest'; builds = 0; broke = [];
+    synced = true; accepts = false; page = 'newspaper'; builds = 0; broke = [];
     root = createRoot(document.createElement('div'));
     render(); // the wall starts (not settled yet): its data is seen
     accepts = true;
@@ -163,7 +163,7 @@ describe('useBreakingDetection with on-demand npm data', () => {
   function H() {
     const news = useBreakingNews();
     useBreakingDetection(news, {
-      page: 'latest', data: [advisories, malware], baseline: [advisories, malware], synced: true,
+      page: 'newspaper', data: [advisories, malware], baseline: [advisories, malware], synced: true,
       build: () => [...(advisories ?? []), ...(malware ?? [])],
       kevAdded: () => new Map(),
       acceptsNews: () => accepts,

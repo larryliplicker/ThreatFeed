@@ -10,7 +10,7 @@ interface ListViewProps {
   articles: Article[];
   isLoading: boolean;
   onOpenArticle: (article: Article) => void;
-  /** Latest only: id of the first article from before the last visit (an "Earlier" divider goes above it) */
+  /** Chronological front page only: id of the first article from before the last visit (an "Earlier" divider goes above it) */
   earlierId?: string | null;
 }
 

@@ -8,7 +8,6 @@ import { useAlertFeed } from '../../hooks/useAlertFeed';
 import { useTabInk } from '../../hooks/useTabInk';
 import {
   Newspaper,
-  Clock,
   Inbox,
   Bookmark,
   Target,
@@ -74,7 +73,6 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({ activeTab, onSel
 
   const tabs: { id: ActiveNavTab; label: string; icon: React.ReactNode; badge?: number; badgeColor?: string }[] = [
     { id: 'newspaper', label: 'Newspaper', icon: <Newspaper className="w-4 h-4" /> },
-    { id: 'latest', label: 'Latest', icon: <Clock className="w-4 h-4" /> },
     {
       id: 'unread',
       label: 'Unread',
@@ -116,14 +114,14 @@ export const NavigationTabs: React.FC<NavigationTabsProps> = ({ activeTab, onSel
 
   const handleCategoryChange = (cat: string) => {
     updateFilter('selectedCategory', cat === 'All' ? null : cat);
-    if (activeTab !== 'newspaper' && activeTab !== 'latest' && activeTab !== 'unread') {
+    if (activeTab !== 'newspaper' && activeTab !== 'unread') {
       onSelectTab('newspaper');
     }
   };
 
   const handleWatchlistToggle = () => {
     updateFilter('watchlistOnly', !filters.watchlistOnly);
-    if (activeTab !== 'newspaper' && activeTab !== 'latest' && activeTab !== 'unread') {
+    if (activeTab !== 'newspaper' && activeTab !== 'unread') {
       onSelectTab('newspaper');
     }
   };

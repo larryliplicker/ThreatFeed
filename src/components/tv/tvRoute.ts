@@ -14,7 +14,7 @@ export function resetTvExit(): void {
 }
 
 const AVAILABLE: Partial<Record<ActiveNavTab, TvKind[]>> = {
-  newspaper: ['tv'], latest: ['tv'], briefing: ['tv'], ransomware: ['tv', 'dash'], vulnerabilities: ['dash'],
+  newspaper: ['tv'], briefing: ['tv'], ransomware: ['tv', 'dash'], vulnerabilities: ['dash'],
 };
 
 /** The full-screen modes a page offers; `sub` is the page's tab (the Vulnerabilities npm tab also has a TV wall) */
