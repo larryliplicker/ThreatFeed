@@ -1,5 +1,5 @@
 import { formatPackageEntry, parsePackageEntry } from '../npm/semver';
-import { ECOSYSTEMS, type Ecosystem } from './ecosystems';
+import { ECOSYSTEMS, type Ecosystem, type OtherEcosystem } from './ecosystems';
 
 export interface EcoEntry {
   ecosystem: Ecosystem;
@@ -17,7 +17,7 @@ for (const [eco, info] of Object.entries(ECOSYSTEMS) as [Ecosystem, (typeof ECOS
 }
 
 const PART = '[A-Za-z0-9_][A-Za-z0-9._-]*';
-const NAME_RULES: Record<Exclude<Ecosystem, 'npm'>, (name: string) => boolean> = {
+const NAME_RULES: Record<OtherEcosystem, (name: string) => boolean> = {
   pypi: n => /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(n),
   // group:artifact, exactly one colon
   maven: n => new RegExp(`^${PART}:${PART}$`).test(n),
@@ -45,7 +45,7 @@ export function parseEntry(s: string): EcoEntry | null {
   const rest = input.slice(colon + 1);
   const at = rest.lastIndexOf('@');
   const name = at > 0 ? rest.slice(0, at) : rest;
-  if (name.length > MAX_NAME || !NAME_RULES[eco as Exclude<Ecosystem, 'npm'>](name)) return null;
+  if (name.length > MAX_NAME || !NAME_RULES[eco as OtherEcosystem](name)) return null;
   if (at < 0) return { ecosystem: eco, name };
   const version = rest.slice(at + 1);
   return versionOk(eco, version) ? { ecosystem: eco, name, version } : null;
@@ -67,7 +67,8 @@ export function normalizeName(eco: Ecosystem, name: string): string {
     case 'pypi':
       return name.toLowerCase().replace(/[-_.]+/g, '-');
     case 'cargo':
-      return name.replace(/_/g, '-');
+      // crates.io names are case-insensitive, and - and _ are the same
+      return name.toLowerCase().replace(/_/g, '-');
     default:
       return name;
   }
@@ -89,6 +90,19 @@ export function splitEntries(input: string[]): { npm: string[]; other: string[] 
     if (seen.has(key)) continue;
     seen.add(key);
     (entry.ecosystem === 'npm' ? out.npm : out.other).push(formatEntry(entry));
+  }
+  return out;
+}
+
+/** An entry of one of the other ecosystems */
+export type OtherEcoEntry = EcoEntry & { ecosystem: OtherEcosystem };
+
+/** The readable non-npm entries of an `ecosystemPackages` list, in order (duplicates kept; callers key them) */
+export function otherEcosystemEntries(packages: readonly unknown[] | undefined): OtherEcoEntry[] {
+  const out: OtherEcoEntry[] = [];
+  for (const raw of packages ?? []) {
+    const e = typeof raw === 'string' ? parseEntry(raw) : null;
+    if (e && e.ecosystem !== 'npm') out.push({ ...e, ecosystem: e.ecosystem });
   }
   return out;
 }

@@ -19,7 +19,7 @@ import {
 } from '../services/storage/indexeddb';
 import { loadActors, loadEcosystemAdvisories, loadEntities, loadMsrc, loadNpmAdvisories, loadNpmMalware, loadRansomwareIntel, loadSnapshot, loadStats, loadTrends, loadVulnData } from '../services/snapshot';
 import { decodeNpmData, decodeNpmMalware, type NpmAdvisoryData, type NpmMalwareData } from '../services/npm/advisories';
-import type { Ecosystem } from '../services/packages/ecosystems';
+import type { OtherEcosystem } from '../services/packages/ecosystems';
 import { buildEntityMatcher } from '../services/intelligence/entityLinks';
 import { NPM_RULE_ID } from '../services/intelligence/alertEngine';
 import { EntityMatcherContext } from '../hooks/useEntityMatcher';
@@ -59,8 +59,6 @@ export function isBackedOff(health: FeedHealth | undefined, now = Date.now()): b
   if (!health || (health.consecutiveFailures ?? 0) < BACKOFF_AFTER_FAILURES) return false;
   return now - new Date(health.lastFetchedAt || 0).getTime() < BACKOFF_RETRY_MS;
 }
-
-type OtherEcosystem = Exclude<Ecosystem, 'npm'>;
 
 interface FeedContextType {
   feeds: Feed[];

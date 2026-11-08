@@ -3,13 +3,12 @@
 // untrusted input: ids are checked before they go into a URL, text is kept as plain, capped text.
 
 import type { NpmAdvisory } from './advisories';
-import type { OsvEvent, PackageEntry } from './semver';
+import type { OsvEvent } from './semver';
+import type { WatchedEntry } from './match';
 import { ECOSYSTEMS, type Ecosystem } from '../packages/ecosystems';
 import { normalizeName, watchKey } from '../packages/entries';
 import { stripGoV } from '../packages/versions/goVersion';
 
-/** A watched entry; one without an ecosystem is npm */
-type Entry = PackageEntry & { ecosystem?: Ecosystem };
 
 export const OSV_BATCH_URL = 'https://api.osv.dev/v1/querybatch';
 export const OSV_VULN_URL = 'https://api.osv.dev/v1/vulns/';
@@ -146,9 +145,9 @@ function toVuln(id: string, eco: Ecosystem, name: string, detail: Detail | undef
  * in our own data). Results are keyed by watchKey (npm `name@version`, the others `eco:name@version`). Null when OSV can't be reached or answers something unreadable; a single
  * failed detail request only leaves that id without details.
  */
-export async function osvQueryBatch(entries: Entry[], known: ReadonlySet<string>, fetchImpl: FetchImpl = fetch): Promise<Map<string, OsvResult> | null> {
+export async function osvQueryBatch(entries: WatchedEntry[], known: ReadonlySet<string>, fetchImpl: FetchImpl = fetch): Promise<Map<string, OsvResult> | null> {
   const unique = [...new Map(entries.map(e => [watchKey(e), e])).values()];
-  const found = new Map<string, { entry: Entry; ids: string[]; complete: boolean }>();
+  const found = new Map<string, { entry: WatchedEntry; ids: string[]; complete: boolean }>();
   try {
     for (let i = 0; i < unique.length; i += OSV_BATCH_SIZE) {
       const chunk = unique.slice(i, i + OSV_BATCH_SIZE);

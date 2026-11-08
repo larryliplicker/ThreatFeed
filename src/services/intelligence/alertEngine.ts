@@ -4,8 +4,8 @@ import { buildWatchState, diffCveWatch, CveWatchState } from './cveWatch';
 import type { NpmAdvisoryData, NpmMalwareData } from '../npm/advisories';
 import { matchPackages, resultKey, type AdvisoriesByEcosystem, type WatchedEntry } from '../npm/match';
 import { formatPackageEntry, parsePackageEntry, type PackageEntry } from '../npm/semver';
-import { parseEntry, watchKey } from '../packages/entries';
-import type { Ecosystem } from '../packages/ecosystems';
+import { otherEcosystemEntries, watchKey, type OtherEcoEntry } from '../packages/entries';
+import type { OtherEcosystem } from '../packages/ecosystems';
 
 export interface AlertMatch {
   ruleId: string;
@@ -63,7 +63,7 @@ export interface NpmInput {
   malware: NpmMalwareData | null;
   ecosystemPackages?: string[]; // settings.ecosystemPackages (prefixed entries of the other ecosystems)
   /** The other ecosystems' files; a missing or null one is not loaded, and its packages wait like npm's do */
-  ecosystems?: Partial<Record<Exclude<Ecosystem, 'npm'>, NpmAdvisoryData | null>>;
+  ecosystems?: Partial<Record<OtherEcosystem, NpmAdvisoryData | null>>;
 }
 
 export interface CheckResult {
@@ -221,16 +221,12 @@ function watchedEntries(packages: string[]): string[] {
   return [...new Set(packages.map(parsePackageEntry).filter((e): e is PackageEntry => e !== null).map(formatPackageEntry))];
 }
 
-type OtherEntry = WatchedEntry & { ecosystem: Exclude<Ecosystem, 'npm'> };
-
 /** The watched entries of the other ecosystems by their prefixed key */
-function ecosystemEntries(packages: string[] | undefined): Map<string, OtherEntry> {
-  const out = new Map<string, OtherEntry>();
-  for (const raw of packages ?? []) {
-    const e = typeof raw === 'string' ? parseEntry(raw) : null;
-    if (!e || e.ecosystem === 'npm') continue;
+function ecosystemEntries(packages: string[] | undefined): Map<string, OtherEcoEntry> {
+  const out = new Map<string, OtherEcoEntry>();
+  for (const e of otherEcosystemEntries(packages)) {
     const key = watchKey(e);
-    if (!out.has(key)) out.set(key, { ...e, ecosystem: e.ecosystem });
+    if (!out.has(key)) out.set(key, e);
   }
   return out;
 }
@@ -281,7 +277,7 @@ function npmCheck(input: CheckInput, store: AlertStore): { state?: RuleState; fr
   const seen = new Set(before.seen.filter(k => watched.has(keyEntry(k))));
   const handled = { ...prev?.handled };
   const files: AdvisoriesByEcosystem = {};
-  for (const [eco, file] of Object.entries(input.npm.ecosystems ?? {}) as [Exclude<Ecosystem, 'npm'>, NpmAdvisoryData | null][]) {
+  for (const [eco, file] of Object.entries(input.npm.ecosystems ?? {}) as [OtherEcosystem, NpmAdvisoryData | null][]) {
     if (file) files[eco] = file;
   }
   // Nothing watched can be matched yet: everything stays as it was (npm-only, this is the old "not loaded" case)

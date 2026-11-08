@@ -53,6 +53,8 @@ interface Rules {
   parse(text: string): unknown | null;
   compare(a: unknown, b: unknown): number;
   range(range: string): ((v: unknown) => boolean) | null;
+  /** The minimum safe version as shown, when the advisory spelling differs from the one users write */
+  display?(text: string): string;
 }
 
 // npm keeps the functions it always used, so its results cannot drift
@@ -69,7 +71,10 @@ function rulesOf(eco: Ecosystem): Rules {
   let r = ruleCache.get(eco);
   if (!r) {
     const v = rulesFor(eco);
-    ruleCache.set(eco, (r = { parse: v.parse, compare: v.compare, range: v.ghsaRange }));
+    r = { parse: v.parse, compare: v.compare, range: v.ghsaRange };
+    // Go advisories write fixed versions without the "v" ("0.17.0") that go.mod needs: read both, show it with the "v"
+    if (eco === 'go') r = { ...r, parse: (t) => v.parse(t) ?? v.parse(`v${t}`), display: (t) => (t.startsWith('v') ? t : `v${t}`) };
+    ruleCache.set(eco, r);
   }
   return r;
 }
@@ -270,7 +275,7 @@ export function matchPackages(
     };
     if (noData && status === 'unknown') result.reason = 'no data';
     const minSafe = advisories.length ? safeVersion(rules, highestVersion(rules, advisories.map(a => a.patched)), [...candidates, ...osvOnly], pick) : undefined;
-    if (minSafe) result.minSafeVersion = minSafe;
+    if (minSafe) result.minSafeVersion = rules.display ? rules.display(minSafe) : minSafe;
     if (advisories.length) result.highestSeverity = advisories[0].malware ? 'critical' : advisories.reduce((s, a) => (rank(a.severity) < rank(s) ? a.severity : s), advisories[0].severity);
     results.push(result);
   }

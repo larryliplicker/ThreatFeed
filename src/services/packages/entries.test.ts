@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ECOSYSTEMS } from './ecosystems';
-import { cleanEcosystemList, formatEntry, normalizeName, parseEntry, splitEntries } from './entries';
+import { cleanEcosystemList, formatEntry, normalizeName, otherEcosystemEntries, parseEntry, splitEntries } from './entries';
 
 describe('ECOSYSTEMS', () => {
   it('carries labels and the GHSA / OSV names', () => {
@@ -57,6 +57,7 @@ describe('normalizeName', () => {
     expect(normalizeName('npm', 'Lodash')).toBe('lodash');
     expect(normalizeName('nuget', 'Newtonsoft.Json')).toBe('newtonsoft.json');
     expect(normalizeName('cargo', 'serde_json')).toBe('serde-json');
+    expect(normalizeName('cargo', 'Foo_Bar')).toBe('foo-bar'); // crates.io names are case-insensitive
     expect(normalizeName('maven', 'Org.Foo:Bar_x')).toBe('Org.Foo:Bar_x');
     expect(normalizeName('go', 'Github.com/Foo/bar')).toBe('Github.com/Foo/bar');
   });
@@ -86,5 +87,15 @@ describe('cleanEcosystemList', () => {
   it('caps the list at 500', () => {
     const many = Array.from({ length: 600 }, (_, i) => `cargo:crate-${i}`);
     expect(cleanEcosystemList(many)).toHaveLength(500);
+  });
+});
+
+describe('otherEcosystemEntries', () => {
+  it('parses the non-npm entries of a stored list, skipping invalid, npm and non-string values', () => {
+    expect(otherEcosystemEntries(['pypi:django@3.2.0', 'lodash', 'bad entry', 42, 'maven:g:a@1'] as unknown as string[])).toEqual([
+      { ecosystem: 'pypi', name: 'django', version: '3.2.0' },
+      { ecosystem: 'maven', name: 'g:a', version: '1' },
+    ]);
+    expect(otherEcosystemEntries(undefined)).toEqual([]);
   });
 });

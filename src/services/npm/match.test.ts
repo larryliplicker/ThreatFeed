@@ -271,6 +271,32 @@ describe('matchPackages across ecosystems', () => {
     expect(matchPackages([{ ...maven, version: '2.15.0' }], { maven: data([LOG4J]) }, null)[0].status).toBe('not-affected');
   });
 
+  it.each([
+    // [entry version, ranges, expected status, expected minSafeVersion]
+    ['v0.16.0', [['golang.org/x/net', '< 0.17.0', '0.17.0']], 'affected', 'v0.17.0'],
+    ['v0.16.0', [['golang.org/x/net', '< 0.17.0', '0.17.0'], ['golang.org/x/net', '< 0.23.0', '0.23.0']], 'affected', 'v0.23.0'],
+    ['v0.17.0', [['golang.org/x/net', '< 0.17.0', '0.17.0']], 'not-affected', undefined],
+    ['v0.0.0-20230101000000-abcdef123456', [['golang.org/x/net', '< 0.7.0', '0.7.0']], 'affected', 'v0.7.0'],
+  ] as const)('gives Go %s its minimum safe version with a "v" (%#)', (version, ranges, status, minSafe) => {
+    const d = data(ranges.map((r, i) => [`GHSA-goxx-0000-000${i}`, 'high', [[...r]]] as NpmIndexEntry));
+    const [r] = matchPackages([{ ecosystem: 'go', name: 'golang.org/x/net', version }], { go: d }, null);
+    expect(r.status).toBe(status);
+    expect(r.minSafeVersion).toBe(minSafe);
+  });
+
+  it('keeps the fixed version of an advisory on an unversioned Go entry', () => {
+    const d = data([['GHSA-goxx-0000-0001', 'high', [['golang.org/x/net', '< 0.17.0', '0.17.0']]]]);
+    const [r] = matchPackages([{ ecosystem: 'go', name: 'golang.org/x/net' }], { go: d }, null);
+    expect(r.status).toBe('no-version');
+    expect(r.advisories[0].patched).toBe('0.17.0');
+    expect(r.minSafeVersion).toBe('v0.17.0');
+  });
+
+  it('matches crate names case-insensitively', () => {
+    const d = data([['GHSA-crat-0000-0001', 'high', [['foo-bar', '< 1.0.0', '1.0.0']]]]);
+    expect(matchPackages([{ ecosystem: 'cargo', name: 'Foo-Bar', version: '0.5.0' }], { cargo: d }, null)[0].status).toBe('affected');
+  });
+
   it('gives unknown for a Maven entry whose version cannot be read', () => {
     const [r] = matchPackages([{ ecosystem: 'maven', name: 'org.apache.logging.log4j:log4j-core', version: '${project.version}' }], { maven: data([LOG4J]) }, null);
     expect(r.status).toBe('unknown');

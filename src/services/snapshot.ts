@@ -6,7 +6,7 @@ import { decodeStats } from './intelligence/stats';
 import { decodeTrends } from './intelligence/trends';
 import { decodeEntities } from './intelligence/entities';
 import { decodeNpmData, decodeNpmMalware, type NpmAdvisoryData, type NpmMalwareData } from './npm/advisories';
-import type { Ecosystem } from './packages/ecosystems';
+import type { OtherEcosystem } from './packages/ecosystems';
 
 export interface FeedSnapshot {
   generatedAt: string;
@@ -98,7 +98,7 @@ export async function loadNpmAdvisories(): Promise<NpmAdvisoryData | null> {
  * Loads data/advisories-<eco>.json for one of the other package ecosystems (same shape as npm-advisories.json).
  * Only asked for when a package of that ecosystem is watched or a view filters to it.
  */
-export async function loadEcosystemAdvisories(eco: Exclude<Ecosystem, 'npm'>): Promise<NpmAdvisoryData | null> {
+export async function loadEcosystemAdvisories(eco: OtherEcosystem): Promise<NpmAdvisoryData | null> {
   try {
     const res = await fetch(`${import.meta.env.BASE_URL}data/advisories-${eco}.json`, { cache: 'no-cache' });
     if (!res.ok) return null;

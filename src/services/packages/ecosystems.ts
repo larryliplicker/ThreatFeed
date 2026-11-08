@@ -1,5 +1,8 @@
 export type Ecosystem = 'npm' | 'pypi' | 'maven' | 'go' | 'nuget' | 'cargo';
 
+/** The ecosystems other than npm: their entries carry a prefix and live in `ecosystemPackages` */
+export type OtherEcosystem = Exclude<Ecosystem, 'npm'>;
+
 /**
  * The package ecosystems ThreatFeed knows. `ghsa` is the GitHub advisories API `ecosystem` value, `osv` the OSV.dev
  * name. `prefixes` are the accepted entry prefixes, case-insensitive; the first is canonical. npm has none: an entry

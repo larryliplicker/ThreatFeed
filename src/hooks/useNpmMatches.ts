@@ -6,8 +6,7 @@ import { knownAdvisoryIds, matchPackages, type AdvisoriesByEcosystem, type Packa
 import { affectingByAdvisory, type AffectedEntry } from '../services/npm/npmFilters';
 import { osvCacheFresh, osvQueryBatch, type OsvResult } from '../services/npm/osv';
 import { parsePackageEntry, type PackageEntry } from '../services/npm/semver';
-import { parseEntry, watchKey, type EcoEntry } from '../services/packages/entries';
-import type { Ecosystem } from '../services/packages/ecosystems';
+import { otherEcosystemEntries, watchKey } from '../services/packages/entries';
 import { useEcosystemAdvisories } from './useNpmAdvisories';
 
 const OSV_CACHE_KEY = 'npmOsv';
@@ -56,10 +55,7 @@ export function useNpmMatches(advisories: NpmAdvisoryData | null, malware: NpmMa
     [settings.npmPackages]
   );
   const ecoPackages = settings.ecosystemPackages;
-  const ecoEntries = useMemo(
-    () => (ecoPackages ?? []).map(parseEntry).filter((e): e is EcoEntry => e !== null && e.ecosystem !== 'npm'),
-    [ecoPackages]
-  );
+  const ecoEntries = useMemo(() => otherEcosystemEntries(ecoPackages), [ecoPackages]);
   const watchedEcos = useMemo(() => [...new Set(ecoEntries.map(e => e.ecosystem))], [ecoEntries]);
   const { data: ecoData, failed: ecoFailed } = useEcosystemAdvisories(watchedEcos);
   const entries = useMemo<PackageEntry[]>(() => (ecoEntries.length ? [...npmEntries, ...ecoEntries] : npmEntries), [npmEntries, ecoEntries]);
@@ -103,7 +99,7 @@ export function useNpmMatches(advisories: NpmAdvisoryData | null, malware: NpmMa
   const results = useMemo(() => {
     if (!advisories) return [];
     // An ecosystem still loading leaves its entries out for now; one that failed shows them as unknown
-    const ready = ecoEntries.filter(e => ecoData[e.ecosystem] || ecoFailed.includes(e.ecosystem as Ecosystem));
+    const ready = ecoEntries.filter(e => ecoData[e.ecosystem] || ecoFailed.includes(e.ecosystem));
     if (!ready.length) return matchPackages(npmEntries, advisories, malware, osvResults);
     const files: AdvisoriesByEcosystem = { ...ecoData, npm: advisories };
     return matchPackages([...npmEntries, ...ready], files, malware, osvResults);

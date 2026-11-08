@@ -7,10 +7,8 @@ import { getSettingsFromDB } from '../services/storage/indexeddb';
 import { loadAlertStore, saveAlertStore } from '../services/intelligence/alertStore';
 import { fetchEpssScores } from '../services/intelligence/cveWatch';
 import { notificationsSupported, notifyAlertMatches } from '../services/notifications';
-import { parseEntry } from '../services/packages/entries';
-import type { Ecosystem } from '../services/packages/ecosystems';
-
-type OtherEcosystem = Exclude<Ecosystem, 'npm'>;
+import { otherEcosystemEntries } from '../services/packages/entries';
+import type { OtherEcosystem } from '../services/packages/ecosystems';
 
 const CHECK_INTERVAL_MS = 5 * 60_000; // sends matches held by the gap once it ends, even with auto-refresh off
 const LEADER_LOCK = 'threatfeed-alerts';
@@ -23,12 +21,7 @@ const needsNpmData = (s: Pick<AlertSettings, 'alertRules' | 'npmPackages'>) => s
 /** The other ecosystems whose files the "My packages" rule needs: those with a watched package, none when it is off */
 function watchedEcosystems(s: Pick<AlertSettings, 'alertRules' | 'ecosystemPackages'>): OtherEcosystem[] {
   if (!packagesRuleOn(s)) return [];
-  const ecos = new Set<OtherEcosystem>();
-  for (const raw of s.ecosystemPackages ?? []) {
-    const e = parseEntry(raw);
-    if (e && e.ecosystem !== 'npm') ecos.add(e.ecosystem);
-  }
-  return [...ecos].sort();
+  return [...new Set(otherEcosystemEntries(s.ecosystemPackages).map(e => e.ecosystem))].sort();
 }
 
 const locksSupported = () => typeof navigator !== 'undefined' && 'locks' in navigator && !!navigator.locks;
