@@ -205,3 +205,6 @@ New defaults apply to new installs. For an existing install, a one-time migratio
    - The settings UI shows "Shown" (removable) and "Other vendors" (addable), plus a "Show all vendors" reset.
    - Untouched installs (`hiddenVulnVendors` empty) migrate to the curated allow-list.
    - KEV figures elsewhere (trends, TV numbers) are unaffected, the same as today's hidden list.
+10. **Mute rules: some categories hidden by default** (user request, 2026-11-08).
+    - "Consumer Tech", "Swedish (Feber)" and "Tech Guides & How-To" are hidden from the front page by default (`frontPageHiddenCategories`; Settings → Mute Rules → Categories on the front page).
+    - Untouched installs (an empty list) migrate to this default. A list the user changed is kept.

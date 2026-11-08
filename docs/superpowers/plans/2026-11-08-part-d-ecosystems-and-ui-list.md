@@ -434,3 +434,22 @@
 - [ ] **CHANGELOG:** Unreleased lines for each user-visible change.
 - [ ] **CLAUDE.md:** the data-file list gains `advisories-<eco>.json` and `popular-packages.json`; `src/services/packages/` is described.
 - [ ] **Commit** `docs: package ecosystems, typosquat warnings and the new defaults`.
+
+### Task 13: hidden front-page categories by default (spec Part 2, item 10)
+
+**Files:**
+- Modify: `src/context/SettingsContext.tsx` (`DEFAULT_SETTINGS.frontPageHiddenCategories`)
+- Modify: `src/services/settingsMigrations.ts` (the existing version-1 step; both changes ship together, so there is no version bump)
+- Test: `settingsMigrations.test.ts`
+
+**Interfaces:**
+- Produces: `DEFAULT_HIDDEN_CATEGORIES = ['Consumer Tech', 'Swedish (Feber)', 'Tech Guides & How-To']`, spelled exactly as the `category` values in `public/data/feeds.json`.
+
+- [ ] **Step 1: Write the failing tests:**
+  - `new installs hide the three categories`
+  - `empty hidden list migrates to the default`
+  - `a changed hidden list is kept`
+  - `the default names exist in feeds.json`
+- [ ] **Step 2: Run** the tests. Expected: FAIL.
+- [ ] **Step 3: Implement.** Also add a test for the TV front wall: these categories stay off it by default (frontWallStories already applies `frontPageHiddenCategories`).
+- [ ] **Step 4: Run** lint, tsc and the suite. Commit `feat(settings): Consumer Tech, Swedish and Tech Guides hidden on the front page by default`.
