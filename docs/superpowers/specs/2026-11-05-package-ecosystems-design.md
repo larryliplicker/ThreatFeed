@@ -145,3 +145,62 @@ Each ecosystem gets a module with the same small interface as `src/services/npm/
 - How the per-ecosystem files are loaded and cached, following `useNpmAdvisories`.
 - Backfill page caps per ecosystem.
 - The exact wording of the help text and chips.
+
+---
+
+# Part 2: UI and defaults list (user request, 2026-11-08)
+
+The user approved the design above ("looks good") and added the list below to the same round. Interpretations marked **(call)** are the assistant's.
+
+## Shared rule for changed defaults **(call)**
+
+New defaults apply to new installs. For an existing install, a one-time migration only moves a setting that is still **untouched** (exactly the old default) to the new default. Anything the user changed is kept, and every migration is a settings-version bump, as `watchlistDefaultsVersion` already does.
+
+## Items
+
+1. **Click a panel to swap it (TV and dashboard).**
+   - Clicking or tapping a tile or panel swaps that slot to the next one from the pool at once, with the normal transition.
+   - Keyboard: tiles are focusable buttons, and Enter/Space do the same.
+   - The slot's timer restarts after a manual swap.
+   - It doesn't count as "breaking", and it never opens the reader. The QR code stays the way to open a story.
+2. **TV/dashboard defaults.**
+   - Interval 30 s, tile size X-Small, animation speed Slow.
+   - Untouched existing settings migrate (60 s / Medium / Fast are the old defaults).
+   - Link params still override per screen.
+3. **npm (Packages) tab charts: exactly 6 chart cards in 2 rows of 3 at `xl`** (2 columns below `xl`, 1 on phones):
+   - By severity, Vulnerabilities vs malware, Fix available, Top weaknesses
+   - **new:** Advisories by ecosystem (from Part 1)
+   - **new:** Most affected packages (ranked bars, 30 d)
+
+   The "My packages" status donut moves out of this grid to the top of the My packages view.
+4. **Newspaper mode is chronological by default** **(call)**, i.e. the front page becomes what Latest is today:
+   - newest-first stream with the "Earlier" divider
+   - sections and clustering off by default, still switchable in the view
+   - In settings, `sectionsEnabled` and `clusteringEnabled` default to false; untouched true values migrate.
+5. **Remove the Latest tab.**
+   - The nav tab is removed. `#/latest` (with any params, including `?tv=1&mix=1`) redirects to the front page with the same params, so kiosk links keep working.
+   - TV and TV+ (mixed mode) move to the front page. Keyboard shortcuts and the help modal drop Latest.
+   - Docs and kiosk URLs are updated to `#/?tv=1&mix=1`, noting that the old ones still work.
+6. **My Feed is empty by default.**
+   - The built-in rules Watchlist, My Stack (news), My Stack (vulns) and Watched CVEs start **disabled**.
+   - "My npm packages" stays enabled; it is empty until packages exist.
+   - Untouched built-ins (never edited, `updatedAt === createdAt`) migrate to disabled.
+   - The My Feed empty state says how to turn rules on.
+7. **Greyscale icons.**
+   - Every colour emoji in the UI becomes a lucide icon in the existing muted grey icon style: 🎯 🔔 ⚡ 🌍 🏴‍☠️ ★ and the country flags.
+   - Flags become a monospace two-letter country code chip, with the full name as a title tooltip.
+   - Text glyphs like ✕ ✓ are not emoji and stay.
+   - Emoji inside feed or advisory text is untrusted content and is left alone.
+8. **Watchlist defaults trimmed** to the most important companies and watch words, about 20 terms instead of about 60:
+   - Words: zero-day, actively exploited, exploited in the wild, CISA KEV, remote code execution, authentication bypass, supply chain attack, ransomware attack, data breach
+   - Companies: Microsoft, Cisco, Fortinet, Ivanti, Palo Alto, Citrix, VMware, SonicWall, Juniper, CrowdStrike, Apple, Google
+   - The presets stay available to add back.
+   - Migration: a list that still equals the current default exactly becomes the new default. Otherwise it is kept, and the defaults-version bump adds nothing.
+9. **Vulnerability vendor filter: show only the important vendors by default.**
+   - The filter becomes an allow-list by default: a curated set of about 25 vendors is shown and every other KEV vendor is hidden:
+     - Microsoft, Apple, Google, Cisco, Fortinet, Ivanti, Palo Alto Networks, VMware, Citrix, Adobe, Oracle, Apache, Linux, Mozilla, SAP, Atlassian, Juniper, F5, SonicWall, Progress, Zyxel, Samsung, Broadcom, Check Point, Veeam
+     - Names match the KEV `vendorProject` spelling; the plan verifies them against vulns.json.
+   - Storage: a new `shownVulnVendors: string[] | null` (null = the legacy "everything except hidden" mode), synced and backed up like `hiddenVulnVendors`.
+   - The settings UI shows "Shown" (removable) and "Other vendors" (addable), plus a "Show all vendors" reset.
+   - Untouched installs (`hiddenVulnVendors` empty) migrate to the curated allow-list.
+   - KEV figures elsewhere (trends, TV numbers) are unaffected, the same as today's hidden list.
