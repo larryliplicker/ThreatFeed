@@ -7,6 +7,7 @@ import { DEFAULT_WATCHLIST_KEYWORDS, WATCHLIST_DEFAULTS_VERSION, upgradeWatchlis
 import { SETTINGS_DEFAULTS_VERSION, migrateDefaults } from '../services/settingsMigrations';
 import { DEFAULT_SHOWN_VENDORS, cleanShownVendors } from '../services/intelligence/vendorFilter';
 import { cleanPackageList } from '../services/npm/packageList';
+import { cleanEcosystemList } from '../services/packages/entries';
 import { cleanSyncLog, recordListChanges } from '../services/sync/syncLog';
 
 export const DEFAULT_BOOKMARK_FOLDERS: string[] = [
@@ -105,6 +106,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   hiddenVulnVendors: [],
   shownVulnVendors: [...DEFAULT_SHOWN_VENDORS],
   npmPackages: [],
+  ecosystemPackages: [],
   npmOsvLookup: false,
   watchedCves: [],
   newspaperSections: DEFAULT_NEWSPAPER_SECTIONS,
@@ -150,6 +152,7 @@ export function loadSavedSettings(saved: UserSettings): UserSettings {
     hiddenVulnVendors: Array.isArray(saved.hiddenVulnVendors) ? saved.hiddenVulnVendors.filter((v: unknown) => typeof v === 'string') : [],
     shownVulnVendors: cleanShownVendors(saved.shownVulnVendors),
     npmPackages: cleanPackageList(saved.npmPackages),
+    ecosystemPackages: cleanEcosystemList(saved.ecosystemPackages),
     npmOsvLookup: saved.npmOsvLookup === true,
     watchedCves: Array.isArray(saved.watchedCves) ? saved.watchedCves.filter((v: unknown) => typeof v === 'string') : [],
     alertRules: migrateAlertRules(saved, new Date()),

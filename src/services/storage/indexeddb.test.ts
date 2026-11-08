@@ -6,6 +6,10 @@ describe('cleanImportedSettings', () => {
   it('drops malformed npm entries', () => {
     expect(cleanImportedSettings(imported, undefined, false).npmPackages).toEqual(['lodash@4.17.15']);
   });
+  it('cleans ecosystemPackages, and an old backup without the field imports as []', () => {
+    expect(cleanImportedSettings({ ...imported, ecosystemPackages: ['pip:requests', 'lodash', 'maven:g', 3] }, undefined, false).ecosystemPackages).toEqual(['pypi:requests']);
+    expect(cleanImportedSettings(imported, undefined, false).ecosystemPackages).toEqual([]);
+  });
   it('keeps the backup\'s OSV opt-in on a restore', () => {
     expect(cleanImportedSettings(imported, { npmOsvLookup: false }, false).npmOsvLookup).toBe(true);
   });

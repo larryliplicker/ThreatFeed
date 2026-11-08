@@ -69,6 +69,7 @@ export function mergeSyncData(local: SyncData, remote: Partial<SyncData>): SyncD
       savedSearches: list('savedSearches'),
       bookmarkFolders: list('bookmarkFolders'),
       npmPackages: list('npmPackages'),
+      ecosystemPackages: list('ecosystemPackages'),
       alertRules: mergeAlertRules(local.settings.alertRules, remote.settings.alertRules, syncLog),
       alertGapHours: local.settings.alertGapHours,
       syncLog,

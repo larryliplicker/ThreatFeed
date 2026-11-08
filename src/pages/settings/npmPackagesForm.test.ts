@@ -18,3 +18,15 @@ describe('parsePackageInput', () => {
     expect(parsePackageInput('  , ', [])).toEqual({ added: [], invalid: [] });
   });
 });
+
+describe('parsePackageInput with other ecosystems', () => {
+  it('accepts prefixed entries next to npm ones and normalises the prefix', () => {
+    expect(parsePackageInput('pip:requests@2.31.0 maven:org.apache.logging.log4j:log4j-core@2.14.1 lodash@4.17.15', [])).toEqual({
+      added: ['pypi:requests@2.31.0', 'maven:org.apache.logging.log4j:log4j-core@2.14.1', 'lodash@4.17.15'],
+      invalid: [],
+    });
+  });
+  it('skips an entry already watched under another spelling and reports bad ones', () => {
+    expect(parsePackageInput('pypi:Foo_Bar maven:g', ['pypi:foo-bar'])).toEqual({ added: [], invalid: ['maven:g'] });
+  });
+});

@@ -71,6 +71,19 @@ describe('mergeSyncData deletions (TEST-008)', () => {
     expect((mergeSyncData(withPkgs(['a']) as any, withPkgs(['b'])) as any).settings.npmPackages).toEqual(['a', 'b']);
   });
 
+  it('syncs ecosystemPackages as its own collection, with deletions', () => {
+    const withEco = (ecosystemPackages: string[] | undefined, syncLog?: object) => data({ settings: { ...lists, ecosystemPackages, syncLog } });
+    const gone = withEco(['cargo:serde'], { ecosystemPackages: { 'pypi:requests@2.31.0': { removed: true, at: recent(1) } } });
+    const still = withEco(['pypi:requests@2.31.0', 'cargo:serde']);
+    expect((mergeSyncData(gone as any, still) as any).settings.ecosystemPackages).toEqual(['cargo:serde']);
+    expect((mergeSyncData(still as any, gone) as any).settings.ecosystemPackages).toEqual(['cargo:serde']);
+  });
+
+  it('keeps a Gist ecosystemPackages collection that this device has never had (older local settings)', () => {
+    const remote = data({ settings: { ...lists, ecosystemPackages: ['pypi:requests@2.31.0'] } });
+    expect((mergeSyncData(data({ settings: { ...lists } }) as any, remote) as any).settings.ecosystemPackages).toEqual(['pypi:requests@2.31.0']);
+  });
+
   it('never takes the OSV lookup opt-in from the remote, even on a device with no settings yet', () => {
     const remote = data({ settings: { ...lists, npmOsvLookup: true } });
     expect((mergeSyncData(data({ settings: null }) as any, remote) as any).settings.npmOsvLookup).toBe(false);
