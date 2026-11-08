@@ -79,6 +79,14 @@ describe('mergeSyncData deletions (TEST-008)', () => {
     expect((mergeSyncData(still as any, gone) as any).settings.ecosystemPackages).toEqual(['cargo:serde']);
   });
 
+  it('syncs typosquat dismissals with deletions (a dismissal can be undone elsewhere)', () => {
+    const withDismissed = (typosquatDismissed: string[], syncLog?: object) => data({ settings: { ...lists, typosquatDismissed, syncLog } });
+    const gone = withDismissed(['npm:lodahs'], { typosquatDismissed: { 'pypi:reqeusts': { removed: true, at: recent(1) } } });
+    const still = withDismissed(['pypi:reqeusts', 'npm:lodahs']);
+    expect((mergeSyncData(gone as any, still) as any).settings.typosquatDismissed).toEqual(['npm:lodahs']);
+    expect((mergeSyncData(withDismissed(['a']) as any, withDismissed(['b'])) as any).settings.typosquatDismissed).toEqual(['a', 'b']);
+  });
+
   it('keeps a Gist ecosystemPackages collection that this device has never had (older local settings)', () => {
     const remote = data({ settings: { ...lists, ecosystemPackages: ['pypi:requests@2.31.0'] } });
     expect((mergeSyncData(data({ settings: { ...lists } }) as any, remote) as any).settings.ecosystemPackages).toEqual(['pypi:requests@2.31.0']);

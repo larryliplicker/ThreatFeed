@@ -70,6 +70,7 @@ export function mergeSyncData(local: SyncData, remote: Partial<SyncData>): SyncD
       bookmarkFolders: list('bookmarkFolders'),
       npmPackages: list('npmPackages'),
       ecosystemPackages: list('ecosystemPackages'),
+      typosquatDismissed: list('typosquatDismissed'),
       alertRules: mergeAlertRules(local.settings.alertRules, remote.settings.alertRules, syncLog),
       alertGapHours: local.settings.alertGapHours,
       syncLog,

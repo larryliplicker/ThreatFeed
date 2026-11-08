@@ -7,7 +7,7 @@ import type { AlertRule, SyncCollection, SyncEvent, SyncLog, UserSettings } from
  * devices decide. Items with no event count as present since time 0, so data without a log merges
  * as a plain union.
  */
-export const SYNCED_LISTS = ['watchlistKeywords', 'stackKeywords', 'mutedKeywords', 'savedSearches', 'bookmarkFolders', 'npmPackages', 'ecosystemPackages'] as const;
+export const SYNCED_LISTS = ['watchlistKeywords', 'stackKeywords', 'mutedKeywords', 'savedSearches', 'bookmarkFolders', 'npmPackages', 'ecosystemPackages', 'typosquatDismissed'] as const;
 export type SyncedList = (typeof SYNCED_LISTS)[number];
 const COLLECTIONS: readonly SyncCollection[] = [...SYNCED_LISTS, 'alertRules'];
 const PURGE_REMOVED_AFTER_MS = 90 * 24 * 60 * 60 * 1000;

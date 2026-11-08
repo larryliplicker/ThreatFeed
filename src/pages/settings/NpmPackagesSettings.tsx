@@ -4,6 +4,8 @@ import { useSettings } from '../../context/SettingsContext';
 import { ECOSYSTEMS } from '../../services/packages/ecosystems';
 import { parseEntry, splitEntries } from '../../services/packages/entries';
 import { parsePackageInput } from './npmPackagesForm';
+import { TyposquatChip } from '../../components/TyposquatChip';
+import { useTyposquat } from '../../hooks/usePopularPackages';
 
 /** The packages (npm and the other ecosystems) whose advisories and malware reports are matched on the Vulnerabilities page: `name` for any version, `name@1.2.3` for one version. */
 export const NpmPackagesSettings: React.FC = () => {
@@ -11,6 +13,7 @@ export const NpmPackagesSettings: React.FC = () => {
   const [draft, setDraft] = useState('');
   const [invalid, setInvalid] = useState<string[]>([]);
   const packages = [...settings.npmPackages, ...settings.ecosystemPackages];
+  const typosquat = useTyposquat();
 
   const add = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,12 +55,15 @@ export const NpmPackagesSettings: React.FC = () => {
                 ? { npmPackages: settings.npmPackages.filter((x) => x !== p) }
                 : { ecosystemPackages: settings.ecosystemPackages.filter((x) => x !== p) });
             return (
-              <span key={p} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-bold border bg-rose-500/10 text-rose-600 dark:text-rose-300 border-rose-500/30">
-                {label && <span className="text-[10px] font-normal opacity-80">{label}</span>}
-                <span>{shown}</span>
-                <button type="button" onClick={remove} className="hover:text-theme-text rounded p-0.5" title={`Remove ${p}`} aria-label={`Remove ${p}`}>
-                  <X className="w-3 h-3" />
-                </button>
+              <span key={p} className="inline-flex flex-wrap items-center gap-1.5">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-bold border bg-rose-500/10 text-rose-600 dark:text-rose-300 border-rose-500/30">
+                  {label && <span className="text-[10px] font-normal opacity-80">{label}</span>}
+                  <span>{shown}</span>
+                  <button type="button" onClick={remove} className="hover:text-theme-text rounded p-0.5" title={`Remove ${p}`} aria-label={`Remove ${p}`}>
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+                {entry && <TyposquatChip eco={entry.ecosystem} name={entry.name} {...typosquat} />}
               </span>
             );
           })}

@@ -8,6 +8,7 @@ import { DEFAULT_DISABLED_CATEGORIES, SETTINGS_DEFAULTS_VERSION, migrateDefaults
 import { DEFAULT_SHOWN_VENDORS, cleanShownVendors } from '../services/intelligence/vendorFilter';
 import { cleanPackageList } from '../services/npm/packageList';
 import { cleanEcosystemList } from '../services/packages/entries';
+import { cleanTyposquatDismissed } from '../services/packages/typosquat';
 import { cleanSyncLog, recordListChanges } from '../services/sync/syncLog';
 
 export const DEFAULT_BOOKMARK_FOLDERS: string[] = [
@@ -107,6 +108,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   shownVulnVendors: [...DEFAULT_SHOWN_VENDORS],
   npmPackages: [],
   ecosystemPackages: [],
+  typosquatDismissed: [],
   npmOsvLookup: false,
   watchedCves: [],
   newspaperSections: DEFAULT_NEWSPAPER_SECTIONS,
@@ -153,6 +155,7 @@ export function loadSavedSettings(saved: UserSettings): UserSettings {
     shownVulnVendors: cleanShownVendors(saved.shownVulnVendors),
     npmPackages: cleanPackageList(saved.npmPackages),
     ecosystemPackages: cleanEcosystemList(saved.ecosystemPackages),
+    typosquatDismissed: cleanTyposquatDismissed(saved.typosquatDismissed),
     npmOsvLookup: saved.npmOsvLookup === true,
     watchedCves: Array.isArray(saved.watchedCves) ? saved.watchedCves.filter((v: unknown) => typeof v === 'string') : [],
     alertRules: migrateAlertRules(saved, new Date()),

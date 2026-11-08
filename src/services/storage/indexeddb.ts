@@ -4,6 +4,7 @@ import { isValidFeedUrl, sanitizeStoredArticle } from '../rss/sanitizer';
 import { cleanSyncLog, syncLogForImport } from '../sync/syncLog';
 import { cleanPackageList } from '../npm/packageList';
 import { cleanEcosystemList } from '../packages/entries';
+import { cleanTyposquatDismissed } from '../packages/typosquat';
 import { keepBookmarkText } from '../articles/merge';
 
 interface ThreatFeedDB extends DBSchema {
@@ -364,6 +365,7 @@ export function cleanImportedSettings(imported: any, current: Partial<UserSettin
     ...imported,
     npmPackages: cleanPackageList(imported.npmPackages),
     ecosystemPackages: cleanEcosystemList(imported.ecosystemPackages),
+    typosquatDismissed: cleanTyposquatDismissed(imported.typosquatDismissed),
     npmOsvLookup: fromSync ? current?.npmOsvLookup === true : imported.npmOsvLookup === true,
   };
 }

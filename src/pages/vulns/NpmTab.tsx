@@ -18,6 +18,8 @@ import { sliceTotal } from '../../components/charts/chartData';
 import { myPackagesStatus, npmFixShare, npmSeverityShare, npmTopCwes, npmVulnVsMalware } from '../../services/charts/figures';
 import { CveButton, EpssValue, SEVERITY_FILL, SeverityPill, StatCards } from './shared';
 import { Package, Search, Skull } from 'lucide-react';
+import { TyposquatChip } from '../../components/TyposquatChip';
+import { useTyposquat } from '../../hooks/usePopularPackages';
 import { formatRelativeTime } from '../../utils/date';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -72,6 +74,7 @@ const SeverityCounts: React.FC<{ advisories: MatchedAdvisory[] }> = ({ advisorie
 
 /** One watched package: its status, what it is affected by, and the upgrade that clears it */
 const PackageCard: React.FC<{ result: PackageResult; osvChecking: boolean }> = ({ result: r, osvChecking }) => {
+  const typosquat = useTyposquat();
   const status = STATUS[r.status];
   const listed = r.advisories.length;
   const hasAdvisories = r.status !== 'not-affected' && listed > 0;
@@ -80,6 +83,7 @@ const PackageCard: React.FC<{ result: PackageResult; osvChecking: boolean }> = (
       <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
         <span className="font-bold text-theme-text break-all">{formatPackageEntry(r.entry)}</span>
         <span className={`px-1.5 rounded border text-[10px] font-bold uppercase ${status.className}`} title={notAffectedTitle(r)}>{status.label}</span>
+        <TyposquatChip eco={r.ecosystem} name={r.entry.name} {...typosquat} />
         {r.malware && <span className="px-1.5 rounded bg-rose-600 text-white text-[10px] font-bold uppercase inline-flex items-center gap-1"><Skull className="w-3 h-3" /> Malware</span>}
         {r.highestSeverity && !r.malware && <span className="text-theme-text-muted inline-flex items-center gap-1">highest <SeverityPill severity={r.highestSeverity === 'unknown' ? undefined : r.highestSeverity} /></span>}
       </div>

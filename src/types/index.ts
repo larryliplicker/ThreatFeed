@@ -456,6 +456,7 @@ export interface UserSettings {
   hiddenVulnVendors: string[]; // KEV vendors left off the Vulnerabilities page (legacy mode, when shownVulnVendors is null)
   shownVulnVendors: string[] | null; // allow-list of KEV vendors shown on the Vulnerabilities page; null = everything except hiddenVulnVendors
   ecosystemPackages: string[]; // watched packages of the other ecosystems, prefixed: `pypi:requests@2.31.0`, `maven:group:artifact@1.0`, `go:`, `nuget:`, `cargo:`
+  typosquatDismissed: string[]; // watched packages whose "Did you mean" warning was dismissed: `pypi:reqeusts` (ecosystem and normalised name); synced
   npmPackages: string[]; // npm packages to watch for advisories: `name` (any version) or `name@exact.version`
   npmOsvLookup: boolean; // also query OSV.dev for the full history of the watched packages (sends names and versions to Google)
   watchedCves: string[]; // CVEs the user follows: alerts on KEV listing, EPSS jumps and new coverage
@@ -468,7 +469,7 @@ export interface UserSettings {
   syncLog?: SyncLog; // when list items were last added/removed, so Gist sync can propagate deletions
 }
 
-export type SyncCollection = 'watchlistKeywords' | 'stackKeywords' | 'mutedKeywords' | 'savedSearches' | 'bookmarkFolders' | 'npmPackages' | 'ecosystemPackages' | 'alertRules';
+export type SyncCollection = 'watchlistKeywords' | 'stackKeywords' | 'mutedKeywords' | 'savedSearches' | 'bookmarkFolders' | 'npmPackages' | 'ecosystemPackages' | 'typosquatDismissed' | 'alertRules';
 export interface SyncEvent { removed: boolean; at: string } // at: ISO time
 /** Latest add/remove event per item: list items keyed by lowercased term, alert rules by id (removals only) */
 export type SyncLog = Partial<Record<SyncCollection, Record<string, SyncEvent>>>;

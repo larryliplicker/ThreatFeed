@@ -10,6 +10,10 @@ describe('cleanImportedSettings', () => {
     expect(cleanImportedSettings({ ...imported, ecosystemPackages: ['pip:requests', 'lodash', 'maven:g', 3] }, undefined, false).ecosystemPackages).toEqual(['pypi:requests']);
     expect(cleanImportedSettings(imported, undefined, false).ecosystemPackages).toEqual([]);
   });
+  it('cleans typosquatDismissed, and an old backup without the field imports as []', () => {
+    expect(cleanImportedSettings({ ...imported, typosquatDismissed: ['pypi:reqeusts', 'pypi:reqeusts', 4, { x: 1 }] }, undefined, false).typosquatDismissed).toEqual(['pypi:reqeusts']);
+    expect(cleanImportedSettings(imported, undefined, false).typosquatDismissed).toEqual([]);
+  });
   it('keeps the backup\'s OSV opt-in on a restore', () => {
     expect(cleanImportedSettings(imported, { npmOsvLookup: false }, false).npmOsvLookup).toBe(true);
   });
