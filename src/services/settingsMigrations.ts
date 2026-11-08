@@ -8,6 +8,9 @@ import { DEFAULT_WATCHLIST_KEYWORDS, WATCHLIST_V2_DEFAULTS } from './intelligenc
  */
 export const SETTINGS_DEFAULTS_VERSION = 1;
 
+/** Categories turned off in "Categories in use" on new installs; spelled as the `category` values in public/data/feeds.json */
+export const DEFAULT_DISABLED_CATEGORIES = ['Consumer Tech', 'Swedish (Feber)', 'Tech Guides & How-To'];
+
 type Step = (s: UserSettings) => UserSettings;
 
 /** Case-insensitive, order-free list comparison */
@@ -21,7 +24,7 @@ function sameTerms(a: readonly string[], b: readonly string[]): boolean {
 /** Built-in rules that used to start enabled and now start disabled so My Feed is empty by default */
 const STARTS_DISABLED = ['watchlist', 'stack-news', 'stack-vulns', 'watched-cves'];
 
-/** Version 1: vendor filter becomes the curated allow-list unless vendors were hidden; TV 60 s / Medium / Fast -> 30 s / X-Small / Slow; sections and clustering off; untouched built-ins off; watchlist trimmed */
+/** Version 1: vendor filter becomes the curated allow-list unless vendors were hidden; TV 60 s / Medium / Fast -> 30 s / X-Small / Slow; sections and clustering off; untouched built-ins off; watchlist trimmed; no categories turned off -> Consumer Tech, Swedish and Tech Guides off */
 const toVersion1: Step = (s) => ({
   ...s,
   tvIntervalSeconds: s.tvIntervalSeconds === 60 ? 30 : s.tvIntervalSeconds,
@@ -35,6 +38,7 @@ const toVersion1: Step = (s) => ({
     r.builtIn && STARTS_DISABLED.includes(r.builtIn) && r.updatedAt === r.createdAt && !r.notify ? { ...r, enabled: false } : r
   ),
   watchlistKeywords: sameTerms(s.watchlistKeywords, WATCHLIST_V2_DEFAULTS) ? [...DEFAULT_WATCHLIST_KEYWORDS] : s.watchlistKeywords,
+  disabledCategories: s.disabledCategories.length === 0 ? [...DEFAULT_DISABLED_CATEGORIES] : s.disabledCategories,
   ...migrateVendorFilter(s),
 });
 

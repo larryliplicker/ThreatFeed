@@ -4,7 +4,8 @@ import type { UserSettings } from '../types';
 import { createBuiltInRules } from './intelligence/alertRules';
 import { DEFAULT_WATCHLIST_KEYWORDS, WATCHLIST_V2_DEFAULTS } from './intelligence/watchlist';
 import { DEFAULT_SHOWN_VENDORS } from './intelligence/vendorFilter';
-import { SETTINGS_DEFAULTS_VERSION, migrateDefaults } from './settingsMigrations';
+import feedsFile from '../../public/data/feeds.json';
+import { DEFAULT_DISABLED_CATEGORIES, SETTINGS_DEFAULTS_VERSION, migrateDefaults } from './settingsMigrations';
 
 const T = new Date('2026-10-01T00:00:00Z');
 
@@ -95,5 +96,33 @@ describe('migrateDefaults', () => {
     const out = migrateDefaults(oldInstall({ shownVulnVendors: null, hiddenVulnVendors: ['Acme'] }), 0);
     expect(out.shownVulnVendors).toBeNull();
     expect(out.hiddenVulnVendors).toEqual(['Acme']);
+  });
+});
+
+describe('categories off by default', () => {
+  const feedCategories = new Set<string>(
+    (feedsFile.feeds as { category: string }[]).map(f => f.category)
+  );
+
+  it('new installs turn the three categories off', () => {
+    expect(DEFAULT_SETTINGS.disabledCategories).toEqual(['Consumer Tech', 'Swedish (Feber)', 'Tech Guides & How-To']);
+    expect(DEFAULT_SETTINGS.frontPageHiddenCategories).toEqual([]);
+  });
+
+  it('empty disabledCategories migrates to the default', () => {
+    expect(migrateDefaults(oldInstall({ disabledCategories: [] }), 0).disabledCategories).toEqual(DEFAULT_DISABLED_CATEGORIES);
+  });
+
+  it('a changed disabledCategories is kept', () => {
+    expect(migrateDefaults(oldInstall({ disabledCategories: ['Malware'] }), 0).disabledCategories).toEqual(['Malware']);
+  });
+
+  it('the default names exist in feeds.json', () => {
+    for (const c of DEFAULT_DISABLED_CATEGORIES) expect(feedCategories.has(c)).toBe(true);
+  });
+
+  it('the "at least one category stays on" rule still holds', () => {
+    // The settings page disables the last remaining toggle (IntelligenceSettings); the default must leave some on
+    expect([...feedCategories].filter(c => !DEFAULT_DISABLED_CATEGORIES.includes(c)).length).toBeGreaterThan(0);
   });
 });

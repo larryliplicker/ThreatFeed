@@ -4,7 +4,7 @@ import { getSettingsFromDB, saveSettingsToDB } from '../services/storage/indexed
 import { ALERT_GAP_OPTIONS, createBuiltInRules, migrateAlertRules } from '../services/intelligence/alertRules';
 import { migrateTvInterval, parseTvAnimationSpeed, parseTvTileSize } from '../services/tv/tvSettings';
 import { DEFAULT_WATCHLIST_KEYWORDS, WATCHLIST_DEFAULTS_VERSION, upgradeWatchlistKeywords } from '../services/intelligence/watchlist';
-import { SETTINGS_DEFAULTS_VERSION, migrateDefaults } from '../services/settingsMigrations';
+import { DEFAULT_DISABLED_CATEGORIES, SETTINGS_DEFAULTS_VERSION, migrateDefaults } from '../services/settingsMigrations';
 import { DEFAULT_SHOWN_VENDORS, cleanShownVendors } from '../services/intelligence/vendorFilter';
 import { cleanPackageList } from '../services/npm/packageList';
 import { cleanEcosystemList } from '../services/packages/entries';
@@ -90,7 +90,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   autoRefreshFeedCooldownHours: 1,
   tvIntervalSeconds: 30,
   tvTileSize: 'xsmall',
-  disabledCategories: [],
+  disabledCategories: [...DEFAULT_DISABLED_CATEGORIES],
   tvTransition: 'reveal',
   tvAnimationSpeed: 'slow',
   tvQrCodes: false,
