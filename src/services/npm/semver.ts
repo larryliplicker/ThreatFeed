@@ -81,22 +81,32 @@ export function compareVersions(a: Version, b: Version): -1 | 0 | 1 {
 
 const ZERO: Version = { major: 0, minor: 0, patch: 0, pre: [] };
 
-interface Bound {
-  version: Version;
-  /** Which part was omitted in an advisory bound: "3" is major-only, "3.1" is minor-only. */
-  partial: 'major' | 'minor' | null;
+/** A range bound in any ecosystem: the version, the first version past a partial bound, and "from the beginning". */
+export interface RangeBound<V> {
+  version: V;
+  /** Exclusive upper limit of what a partial bound ("3", "3.1") covers; null for a full version. */
+  ceiling: V | null;
+  /** The bound means "from the very beginning" (0, 0.0.0): it also includes everything below it. */
+  zero: boolean;
 }
 
 /** Bound as written in an advisory: full semver, or a partial "3" / "3.1" (no prerelease). */
-function parseBound(s: string): Bound | null {
+export function parseBound(s: string): RangeBound<Version> | null {
   const full = parseVersion(s);
-  if (full) return { version: full, partial: null };
-  const m = PARTIAL_RE.exec(s);
-  if (!m) return null;
-  const major = safeInt(m[1]);
-  const minor = m[2] === undefined ? 0 : safeInt(m[2]);
-  if (major === null || minor === null) return null;
-  return { version: { major, minor, patch: 0, pre: [] }, partial: m[2] === undefined ? 'major' : 'minor' };
+  let version: Version;
+  let partial: 'major' | 'minor' | null = null;
+  if (full) {
+    version = full;
+  } else {
+    const m = PARTIAL_RE.exec(s);
+    if (!m) return null;
+    const major = safeInt(m[1]);
+    const minor = m[2] === undefined ? 0 : safeInt(m[2]);
+    if (major === null || minor === null) return null;
+    version = { major, minor, patch: 0, pre: [] };
+    partial = m[2] === undefined ? 'major' : 'minor';
+  }
+  return { version, ceiling: partial ? partialCeiling(version, partial) : null, zero: isZero(version) };
 }
 
 /** First version beyond everything a partial bound covers: "3" -> 4.0.0, "3.1" -> 3.2.0. */
@@ -113,74 +123,102 @@ const isZero = (v: Version) => v.major === 0 && v.minor === 0 && v.patch === 0 &
 const COMPARATOR_RE = /^(>=|<=|>|<|=)\s*(\S+)$/;
 
 /**
- * GitHub Advisory `vulnerable_version_range`, e.g. ">= 3.25.0, < 3.90.0". Null when unparseable.
+ * GitHub Advisory `vulnerable_version_range`, e.g. ">= 3.25.0, < 3.90.0", for any ecosystem: the comparator
+ * grammar is shared, `parseBound` and `compare` supply the version rules. Null when unparseable.
  * A partial bound is read the way that widens the vulnerable range: "<= 3.1" covers all of 3.1.x
  * and "= 3.1" is 3.1.x.
  */
-export function parseGhsaRange(range: string): RangeTest | null {
-  const tests: RangeTest[] = [];
+export function ghsaRangeWith<V>(
+  range: string,
+  parseBound: (text: string) => RangeBound<V> | null,
+  compare: (a: V, b: V) => -1 | 0 | 1,
+): ((v: V) => boolean) | null {
+  const tests: ((v: V) => boolean)[] = [];
   for (const part of range.split(',')) {
     const m = COMPARATOR_RE.exec(part.trim());
     if (!m) return null;
     const [, op, text] = m;
     const bound = parseBound(text);
     if (!bound) return null;
-    const { version: base, partial } = bound;
-    const ceiling = partial ? partialCeiling(base, partial) : null;
-    if (op === '>=' && isZero(base)) {
+    const { version: base, ceiling } = bound;
+    if (op === '>=' && bound.zero) {
       tests.push(() => true);
     } else if (op === '>=') {
-      tests.push((v) => compareVersions(v, base) >= 0);
+      tests.push((v) => compare(v, base) >= 0);
     } else if (op === '>') {
-      tests.push((v) => compareVersions(v, base) > 0);
+      tests.push((v) => compare(v, base) > 0);
     } else if (op === '<') {
-      tests.push((v) => compareVersions(v, base) < 0);
+      tests.push((v) => compare(v, base) < 0);
     } else if (op === '<=') {
-      tests.push(ceiling ? (v) => compareVersions(v, ceiling) < 0 : (v) => compareVersions(v, base) <= 0);
+      tests.push(ceiling ? (v) => compare(v, ceiling) < 0 : (v) => compare(v, base) <= 0);
     } else {
       tests.push(ceiling
-        ? (v) => compareVersions(v, base) >= 0 && compareVersions(v, ceiling) < 0
-        : (v) => compareVersions(v, base) === 0);
+        ? (v) => compare(v, base) >= 0 && compare(v, ceiling) < 0
+        : (v) => compare(v, base) === 0);
     }
   }
   return (v) => tests.every((t) => t(v));
 }
+/** npm/semver rules over GHSA range strings. */
+export function parseGhsaRange(range: string): RangeTest | null {
+  return ghsaRangeWith(range, parseBound, compareVersions);
+}
 
-type Resolved = { kind: 'introduced' | 'fixed' | 'last_affected'; ver: Version; beginning: boolean };
+export interface EventVersion<V> {
+  ver: V;
+  /** An `introduced` at this version means "from the very beginning". */
+  zero: boolean;
+}
+
+/** An OSV event version in semver terms: "0" is the beginning of time. */
+export function semverEvent(text: string): EventVersion<Version> | null {
+  const ver = parseVersion(text) ?? (text === '0' ? ZERO : null);
+  return ver ? { ver, zero: isZero(ver) } : null;
+}
+
+type Resolved<V> = { kind: 'introduced' | 'fixed' | 'last_affected'; ver: V; beginning: boolean };
 const KIND_ORDER = { fixed: 0, introduced: 1, last_affected: 2 } as const;
 
 /**
- * OSV `SEMVER` range semantics over an event list: walk the events in version order, introduced
+ * OSV range semantics over an event list, for any ecosystem: walk the events in version order, introduced
  * switches "affected" on, fixed switches it off, last_affected switches it off after that version.
  * Null when the events are empty, malformed, or never introduce anything.
  */
-export function osvAffected(v: Version, events: OsvEvent[]): boolean | null {
-  const resolved: Resolved[] = [];
+export function osvAffectedWith<V>(
+  v: V,
+  events: OsvEvent[],
+  parseEvent: (text: string) => EventVersion<V> | null,
+  compare: (a: V, b: V) => -1 | 0 | 1,
+): boolean | null {
+  const resolved: Resolved<V>[] = [];
   for (const e of events) {
     const keys = (['introduced', 'fixed', 'last_affected'] as const).filter((k) => e[k] !== undefined);
     if (keys.length !== 1) return null;
     const kind = keys[0];
     const text = e[kind];
     if (typeof text !== 'string') return null;
-    const ver = parseVersion(text) ?? (text === '0' ? ZERO : null);
-    if (!ver) return null;
-    const beginning = kind === 'introduced' && isZero(ver);
-    resolved.push({ kind, ver, beginning });
+    const parsed = parseEvent(text);
+    if (!parsed) return null;
+    resolved.push({ kind, ver: parsed.ver, beginning: kind === 'introduced' && parsed.zero });
   }
   if (!resolved.some((r) => r.kind === 'introduced')) return null;
   resolved.sort((a, b) => {
     if (a.beginning !== b.beginning) return a.beginning ? -1 : 1;
     // At the same version, fixed is applied before introduced, so re-introduction wins.
-    return compareVersions(a.ver, b.ver) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
+    return compare(a.ver, b.ver) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind];
   });
   let affected = false;
   for (const r of resolved) {
-    const c = r.beginning ? -1 : compareVersions(r.ver, v);
+    const c = r.beginning ? -1 : compare(r.ver, v);
     if (r.kind === 'introduced') { if (c <= 0) affected = true; }
     else if (r.kind === 'fixed') { if (c <= 0) affected = false; }
     else if (c < 0) affected = false;
   }
   return affected;
+}
+
+export function osvAffected(v: Version, events: OsvEvent[]): boolean | null {
+  return osvAffectedWith(v, events, semverEvent, compareVersions);
 }
 
 export interface PackageEntry {
