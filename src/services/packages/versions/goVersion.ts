@@ -6,7 +6,7 @@ import { compareVersions, parseVersion, type Version } from '../../npm/semver';
 export type GoVersion = Version;
 
 export function parseGo(input: string): GoVersion | null {
-  if (!input.startsWith('v') || input.startsWith('vv')) return null;
+  if (input.length > 256 || !input.startsWith('v') || input.startsWith('vv')) return null;
   return parseVersion(input);
 }
 

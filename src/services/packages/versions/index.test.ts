@@ -60,12 +60,89 @@ describe('rulesFor', () => {
     }
   });
 
-  it('compares a partial bound natively for PyPI, Maven and NuGet', () => {
-    for (const eco of ['pypi', 'maven', 'nuget'] as const) {
-      const t = rulesFor(eco).ghsaRange('< 2.15')!;
-      expect(t(v(eco, '2.14.9')), eco).toBe(true);
-      expect(t(v(eco, '2.15.0')), eco).toBe(false);
+  it('reads a partial bound in the widest way in every ecosystem', () => {
+    const cases: [Ecosystem, string, string, boolean][] = [
+      ['pypi', '<= 3.1', '3.1.5', true],
+      ['pypi', '= 3.1', '3.1.5', true],
+      ['pypi', '<= 3', '3.9.9', true],
+      ['pypi', '<= 3.1', '3.2', false],
+      ['pypi', '= 3.1', '3.2.dev1', false],
+      ['pypi', '= 3.1', '3.0.9', false],
+      ['maven', '<= 3.1', '3.1.5', true],
+      ['maven', '= 3.1', '3.1.2', true],
+      ['maven', '<= 31.1', '31.1-jre', true],
+      ['maven', '<= 3.1', '3.2', false],
+      ['maven', '<= 3', '3.9', true],
+      ['maven', '<= 3', '4.0', false],
+      ['nuget', '<= 4.0', '4.0.1', true],
+      ['nuget', '= 4.0', '4.0.9.1', true],
+      ['nuget', '<= 4.0', '4.1.0', false],
+      ['nuget', '<= 4', '4.9.0', true],
+    ];
+    for (const [eco, range, ver, want] of cases) {
+      const r = rulesFor(eco);
+      expect(r.ghsaRange(range)!(r.parse(ver)), `${eco} ${range} vs ${ver}`).toBe(want);
     }
+  });
+
+  it('a plain numeric <= / = bound also covers post-release and qualifier variants (PyPI, Maven)', () => {
+    const cases: [Ecosystem, string, string, boolean][] = [
+      ['pypi', '<= 2.0', '2.0.post1', true],
+      ['pypi', '<= 2.0.0', '2.0.0.post1', true],
+      ['pypi', '= 2.0.0', '2.0.0.post1', true],
+      ['pypi', '<= 2.0.0', '2.0.0+local', true],
+      ['pypi', '<= 2.0.0', '2.0.0.1', false],
+      ['pypi', '<= 2.0.0', '2.0.1', false],
+      ['maven', '<= 31.1.0', '31.1.0-jre', true],
+      ['maven', '<= 31.1.0', '31.1-android', true],
+      ['maven', '= 31.1.0', '31.1.0-sp1', true],
+      ['maven', '<= 31.1.0', '31.1.0-final', true],
+      ['maven', '<= 31.1.0', '31.1.1-jre', false],
+      ['maven', '<= 31.1.0', '31.10', false],
+    ];
+    for (const [eco, range, ver, want] of cases) {
+      const r = rulesFor(eco);
+      expect(r.ghsaRange(range)!(r.parse(ver)), `${eco} ${range} vs ${ver}`).toBe(want);
+    }
+  });
+
+  it('keeps < and >= exact, including for qualifier variants', () => {
+    const p = rulesFor('pypi');
+    expect(p.ghsaRange('< 2.15.0')!(p.parse('2.15.0'))).toBe(false);
+    expect(p.ghsaRange('< 2.15.0')!(p.parse('2.15.0.post1'))).toBe(false);
+    expect(p.ghsaRange('>= 2.15.0')!(p.parse('2.15.0.post1'))).toBe(true);
+    const m = rulesFor('maven');
+    expect(m.ghsaRange('< 2.15.0')!(m.parse('2.15.0'))).toBe(false);
+    expect(m.ghsaRange('< 2.15.0')!(m.parse('2.15.0-jre'))).toBe(false);
+    expect(m.ghsaRange('< 2.15.0')!(m.parse('2.14.1-jre'))).toBe(true);
+    expect(m.ghsaRange('< 3')!(m.parse('2.9-jre'))).toBe(true);
+    expect(m.ghsaRange('< 3')!(m.parse('3.0-jre'))).toBe(false);
+    expect(m.ghsaRange('>= 31.1')!(m.parse('31.1-jre'))).toBe(true);
+    const n = rulesFor('nuget');
+    expect(n.ghsaRange('< 4.0')!(n.parse('4.0.1'))).toBe(false);
+  });
+
+  it('refuses text longer than 256 characters as unknown', () => {
+    for (const eco of ECOS) {
+      const r = rulesFor(eco);
+      const long = (eco === 'go' ? 'v' : '') + '1' + '.1'.repeat(200);
+      expect(r.parse(long), eco).toBeNull();
+      expect(r.ghsaRange(`< ${long}`), eco).toBeNull();
+      expect(r.osvAffected(v(eco, '1.0.0'), [{ introduced: '0' }, { fixed: long }]), eco).toBeNull();
+    }
+  });
+
+  it('does not recurse on a deeply nested Maven version', () => {
+    const r = rulesFor('maven');
+    expect(() => r.parse('1' + '-1'.repeat(100000))).not.toThrow();
+    expect(r.parse('1' + '-1'.repeat(100000))).toBeNull();
+    expect(r.parse('1' + '-a'.repeat(100))).not.toBeNull(); // within the cap still works
+  });
+
+  it('cargo bounds and events reject a leading v like cargo versions do', () => {
+    const c = rulesFor('cargo');
+    expect(c.ghsaRange('< v1.0.0')).toBeNull();
+    expect(c.osvAffected(c.parse('0.5.0'), [{ introduced: '0' }, { fixed: 'v1.0.0' }])).toBeNull();
   });
 
   it('accepts GHSA-style Go bounds without the v', () => {

@@ -21,6 +21,8 @@ const RE = new RegExp(
     '(?:\\+[a-z0-9]+(?:[-_.][a-z0-9]+)*)?$', // local version, ignored
   'i',
 );
+/** Longer input is not a version; it also bounds the work done on untrusted text. */
+const MAX_LENGTH = 256;
 const PRE_RANK: Record<string, number> = { a: 0, alpha: 0, b: 1, beta: 1, c: 2, rc: 2, pre: 2, preview: 2 };
 
 /** A missing number means 0 ("1.0a" is "1.0a0"); null when it does not fit a safe integer. */
@@ -31,6 +33,7 @@ function int(s: string | undefined): number | null {
 }
 
 export function parsePep440(input: string): Pep440 | null {
+  if (input.length > MAX_LENGTH) return null;
   const m = RE.exec(input.trim());
   if (!m) return null;
   const epoch = int(m[1]);

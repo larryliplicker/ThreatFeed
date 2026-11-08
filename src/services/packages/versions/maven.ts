@@ -1,7 +1,8 @@
-// Maven versions, ordered like Maven's own ComparableVersion: numeric segments compare numerically,
-// qualifiers alpha < beta < milestone < rc < snapshot < "" (release) < sp < any unknown qualifier, "-" opens
-// a nested list, trailing zeros and release qualifiers are dropped. Text with characters that cannot occur
-// in a Maven version, or does not start with a digit, gives null (unknown).
+// Maven versions, ordered like Maven's own ComparableVersion as of Maven 3.x before 3.9: numeric segments
+// compare numerically, qualifiers alpha < beta < milestone < rc < snapshot < "" (release) < sp < any unknown
+// qualifier, a letter/digit transition and "-" each open a nested list, trailing zeros and release qualifiers are
+// dropped. Text with characters that cannot occur in a Maven version, or that does not start with a digit,
+// gives null (unknown).
 
 type Item =
   | { t: 'int'; v: bigint }
@@ -10,6 +11,8 @@ type Item =
 
 export type MavenVersion = Extract<Item, { t: 'list' }>;
 
+/** Longer input is not a version; it also bounds the nesting depth ('-' opens a list). */
+const MAX_LENGTH = 256;
 const QUALIFIERS = ['alpha', 'beta', 'milestone', 'rc', 'snapshot', '', 'sp'];
 const ALIASES: Record<string, string> = { ga: '', final: '', release: '', cr: 'rc' };
 const RELEASE_INDEX = String(QUALIFIERS.indexOf(''));
@@ -39,6 +42,7 @@ function normalize(list: MavenVersion): void {
 }
 
 export function parseMaven(input: string): MavenVersion | null {
+  if (input.length > MAX_LENGTH) return null;
   const version = input.toLowerCase();
   if (!VALID_RE.test(version)) return null;
   const root: MavenVersion = { t: 'list', items: [] };
@@ -122,4 +126,15 @@ function compareItem(a: Item, b: Item | null): -1 | 0 | 1 {
 
 export function compareMaven(a: MavenVersion, b: MavenVersion): -1 | 0 | 1 {
   return compareItem(a, b);
+}
+
+/** The leading numeric segments of a version without trailing zeros: 31.1.0-jre -> [31, 1]. */
+export function mavenNumericPrefix(v: MavenVersion): bigint[] {
+  const nums: bigint[] = [];
+  for (const i of v.items) {
+    if (i.t !== 'int') break;
+    nums.push(i.v);
+  }
+  while (nums.length && nums[nums.length - 1] === 0n) nums.pop();
+  return nums;
 }

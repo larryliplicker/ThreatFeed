@@ -88,6 +88,11 @@ export interface RangeBound<V> {
   ceiling: V | null;
   /** The bound means "from the very beginning" (0, 0.0.0): it also includes everything below it. */
   zero: boolean;
+  /**
+   * Versions above the bound that still count as "the same release" for `<=` and `=` (post-release or
+   * qualifier variants such as 2.0.post1 or 31.1-jre). Absent for semver, where there are none.
+   */
+  covers?: (v: V) => boolean;
 }
 
 /** Bound as written in an advisory: full semver, or a partial "3" / "3.1" (no prerelease). */
@@ -124,13 +129,13 @@ const COMPARATOR_RE = /^(>=|<=|>|<|=)\s*(\S+)$/;
 
 /**
  * GitHub Advisory `vulnerable_version_range`, e.g. ">= 3.25.0, < 3.90.0", for any ecosystem: the comparator
- * grammar is shared, `parseBound` and `compare` supply the version rules. Null when unparseable.
+ * grammar is shared, `readBound` and `compare` supply the version rules. Null when unparseable.
  * A partial bound is read the way that widens the vulnerable range: "<= 3.1" covers all of 3.1.x
  * and "= 3.1" is 3.1.x.
  */
 export function ghsaRangeWith<V>(
   range: string,
-  parseBound: (text: string) => RangeBound<V> | null,
+  readBound: (text: string) => RangeBound<V> | null,
   compare: (a: V, b: V) => -1 | 0 | 1,
 ): ((v: V) => boolean) | null {
   const tests: ((v: V) => boolean)[] = [];
@@ -138,9 +143,9 @@ export function ghsaRangeWith<V>(
     const m = COMPARATOR_RE.exec(part.trim());
     if (!m) return null;
     const [, op, text] = m;
-    const bound = parseBound(text);
+    const bound = readBound(text);
     if (!bound) return null;
-    const { version: base, ceiling } = bound;
+    const { version: base, ceiling, covers } = bound;
     if (op === '>=' && bound.zero) {
       tests.push(() => true);
     } else if (op === '>=') {
@@ -150,11 +155,13 @@ export function ghsaRangeWith<V>(
     } else if (op === '<') {
       tests.push((v) => compare(v, base) < 0);
     } else if (op === '<=') {
-      tests.push(ceiling ? (v) => compare(v, ceiling) < 0 : (v) => compare(v, base) <= 0);
+      tests.push(ceiling
+        ? (v) => compare(v, ceiling) < 0
+        : (v) => compare(v, base) <= 0 || (covers?.(v) ?? false));
     } else {
       tests.push(ceiling
         ? (v) => compare(v, base) >= 0 && compare(v, ceiling) < 0
-        : (v) => compare(v, base) === 0);
+        : (v) => compare(v, base) === 0 || (compare(v, base) > 0 && (covers?.(v) ?? false)));
     }
   }
   return (v) => tests.every((t) => t(v));

@@ -9,6 +9,8 @@ export interface NugetVersion {
   pre: Version;
 }
 
+/** Longer input is not a version. */
+const MAX_LENGTH = 256;
 const ID = '[0-9A-Za-z-]+';
 const RE = new RegExp(`^(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?(?:\\.(\\d+))?(?:-(${ID}(?:\\.${ID})*))?(?:\\+${ID}(?:\\.${ID})*)?$`);
 
@@ -19,6 +21,7 @@ function safeInt(s: string | undefined): number | null {
 }
 
 export function parseNuget(input: string): NugetVersion | null {
+  if (input.length > MAX_LENGTH) return null;
   const m = RE.exec(input.trim());
   if (!m) return null;
   const nums = [m[1], m[2], m[3], m[4]].map(safeInt);
