@@ -107,7 +107,7 @@ export function vulnPanels(ctx: VulnCtx, fresh: () => VulnCtx = () => ctx): Pane
       row={it => (
         <>
           <span className="tv-row-main"><Score score={it.score} /> {it.cve} {'·'} {it.title}</span>
-          {it.tags.map(t => <span key={t} className={`tv-pill ${PILL[t]}`}>{t === 'Followed' ? <Star aria-label="Followed" style={{ width: '1em', height: '1em', verticalAlign: '-0.1em' }} /> : t}</span>)}
+          {it.tags.map(t => <span key={t} className={`tv-pill ${PILL[t]}`}>{t === 'Followed' ? <Star role="img" aria-label="Followed" style={{ width: '1em', height: '1em', verticalAlign: '-0.1em' }} /> : t}</span>)}
           {it.epss !== undefined && <span className="tv-epss">EPSS {Math.round(it.epss * 100)}%</span>}
         </>
       )}
