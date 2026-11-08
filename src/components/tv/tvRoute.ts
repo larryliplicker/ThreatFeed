@@ -78,6 +78,21 @@ export function leaveFullscreen(): void {
   } catch { /* ignore */ }
 }
 
+let shells = 0;
+
+/**
+ * Registers a mounted TV shell; the returned cleanup leaves full screen once the shell is really gone. The leave waits a
+ * tick and is skipped when a shell mounted again meanwhile (React StrictMode in dev unmounts and remounts at once, and
+ * leaving then would also exit the mode through the fullscreenchange listener).
+ */
+export function trackShell(): () => void {
+  shells++;
+  return () => {
+    shells--;
+    setTimeout(() => { if (shells === 0) leaveFullscreen(); }, 0);
+  };
+}
+
 export const tvKindNow = (): TvKind | null => {
   const route = parseHash(window.location.hash);
   return tvFromParams(route.page, route.params, route.sub);

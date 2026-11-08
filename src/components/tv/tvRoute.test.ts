@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { enterTv, exitTv, leaveFullscreen, resetTvExit, tvAvailable, tvFromParams } from './tvRoute';
+import { enterTv, exitTv, leaveFullscreen, resetTvExit, trackShell, tvAvailable, tvFromParams } from './tvRoute';
 
 describe('tvRoute', () => {
   it('lists the modes each page offers', () => {
@@ -38,6 +38,33 @@ describe('leaveFullscreen', () => {
     expect(() => leaveFullscreen()).not.toThrow();
     expect(exit).toHaveBeenCalledTimes(1);
     await Promise.resolve();
+  });
+});
+
+describe('trackShell', () => {
+  const tick = () => new Promise(r => setTimeout(r, 5));
+  const inFullscreen = () => {
+    const exit = vi.fn(() => Promise.resolve());
+    Object.defineProperty(document, 'fullscreenElement', { value: document.documentElement, configurable: true });
+    Object.defineProperty(document, 'exitFullscreen', { value: exit, configurable: true });
+    return exit;
+  };
+  it('does not leave full screen when the shell remounts at once (StrictMode)', async () => {
+    const exit = inFullscreen();
+    const first = trackShell();
+    first(); // the dev double-invoke: cleanup, then mount again
+    const second = trackShell();
+    await tick();
+    expect(exit).not.toHaveBeenCalled();
+    second();
+    await tick();
+    expect(exit).toHaveBeenCalledTimes(1); // the real unmount
+  });
+  it('a plain unmount leaves full screen once', async () => {
+    const exit = inFullscreen();
+    trackShell()();
+    await tick();
+    expect(exit).toHaveBeenCalledTimes(1);
   });
 });
 

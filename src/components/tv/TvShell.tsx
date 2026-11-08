@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { ActiveNavTab } from '../../types';
 import { usePanelLayer } from '../Common/panelStack';
-import { exitTv, leaveFullscreen, resetTvExit, TvKind } from './tvRoute';
+import { exitTv, resetTvExit, trackShell, TvKind } from './tvRoute';
 import { QUIET_SETTLE_MS, useAutoReload } from './useAutoReload';
 import { useTvSettings } from './useTvSettings';
 import { SPEED_FACTOR } from './wallMotion';
@@ -30,7 +30,7 @@ export default function TvShell({ kind, page, sub = '' }: { kind: TvKind; page: 
   }, []);
 
   // However the mode ends (Back, a hash edit, another page), the browser leaves full screen with it
-  useEffect(() => leaveFullscreen, []);
+  useEffect(trackShell, []);
 
   // The page behind never scrolls (Space, PageDown, scrollbars)
   useEffect(() => {
