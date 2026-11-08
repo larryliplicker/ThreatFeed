@@ -5,7 +5,7 @@ const enc = encodeURIComponent;
 
 export function storyLink(site: string, article: Pick<Article, 'id' | 'url'>): string {
   const src = article.url ? `&src=${enc(article.url)}` : '';
-  return `${site}#/latest?article=${enc(article.id)}${src}`;
+  return `${site}#/?article=${enc(article.id)}${src}`;
 }
 
 export function cveLink(site: string, cve: string): string {

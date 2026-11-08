@@ -5,7 +5,7 @@ import { useSettings } from '../../context/SettingsContext';
 import { useTvSettings } from './useTvSettings';
 import { useVulns } from '../../hooks/useVulns';
 import { useLeakSiteVictims } from '../../hooks/useLeakSiteVictims';
-import { filterAndSortArticles } from '../../services/articles/filterSort';
+import { frontWallStories } from '../../services/tv/frontStories';
 import { buildBriefing } from '../../services/intelligence/briefing';
 import { npmTilesForMix, tilesForBriefing, tilesForFront, tilesForNpm, tilesForRansomware, toEngineItems, TvTile } from '../../services/tv/tiles';
 import { EngineItem, GRIDS } from '../../services/tv/tileEngine';
@@ -27,11 +27,6 @@ const NUM = 'num:';
 const NONE: string[] = []; // stable, so the panels' data memo still hits when a setting is missing
 /** Mixed mode keeps npm advisories to at most 1 in 6 of the stories */
 const NPM_EVERY = 6;
-
-const NO_FILTERS = {
-  searchQuery: '', selectedCategory: null, selectedSourceId: null, selectedTag: null,
-  readStatus: 'all', viewedStatus: 'all', bookmarkedOnly: false, dateRange: 'all', sortBy: 'newest',
-} as const;
 
 function useClock(): string {
   const fmt = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -96,9 +91,7 @@ export default function TvWall({ page, sub = '' }: { page: ActiveNavTab; sub?: s
     const d = ref.current;
     if (d.npmWall) return d.npmData ? tilesForNpm(d.npmData, d.npmMalware, d.npmResults, now) : [];
     if (d.page === 'newspaper') {
-      const shown = filterAndSortArticles(d.articles, NO_FILTERS, false, d.feeds, d.settings.watchlistKeywords, {
-        mutedKeywords: d.settings.mutedKeywords,
-      });
+      const shown = frontWallStories(d.articles, d.feeds, d.settings);
       return tilesForFront(shown, d.settings.stackKeywords, now);
     }
     if (d.page === 'briefing') {

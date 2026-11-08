@@ -19,7 +19,7 @@ Inspired by the editorial elegance, typography, and usability of **Newsify for i
   - **Newspaper Mode**: Broadsheet editorial hierarchy.
   - **List + Thumbnails**: Modern media-rich newsfeed.
   - **Compact List**: Fast traditional scanner for rapid triage.
-- **Chronological front page**: with sections and clustering off (the default), the front page is a strict newest-first stream, independent of the sort filter, in every layout. Switching sections or clustering on in the view applies to that view only (until you leave it); My Feed starts the same way. (This replaces the old Latest tab; `#/latest` links redirect to the front page.)
+- **Chronological front page**: with sections and clustering off (the default), the front page is a strict newest-first stream, independent of the sort filter, in every layout. While the front page is chronological, switching sections or clustering on in the view applies to that view only (until you leave it); My Feed starts the same way. (This replaces the old Latest tab; `#/latest` links redirect to the front page.)
 - Long lists render incrementally with a **Show more** button, so large archives stay responsive.
 - **Freshness Indicators**: Relative timestamps (`12m ago`, `2h ago`, `Yesterday`, `24 Sep`).
 - **Editorial Fallbacks**: Never leaves ugly broken image icons; generates threat-themed gradients and branding placeholders.
