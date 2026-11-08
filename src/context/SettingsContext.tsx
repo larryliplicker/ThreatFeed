@@ -4,6 +4,7 @@ import { getSettingsFromDB, saveSettingsToDB } from '../services/storage/indexed
 import { ALERT_GAP_OPTIONS, createBuiltInRules, migrateAlertRules } from '../services/intelligence/alertRules';
 import { migrateTvInterval, parseTvAnimationSpeed, parseTvTileSize } from '../services/tv/tvSettings';
 import { DEFAULT_WATCHLIST_KEYWORDS, WATCHLIST_DEFAULTS_VERSION, upgradeWatchlistKeywords } from '../services/intelligence/watchlist';
+import { SETTINGS_DEFAULTS_VERSION, migrateDefaults } from '../services/settingsMigrations';
 import { cleanPackageList } from '../services/npm/packageList';
 import { cleanSyncLog, recordListChanges } from '../services/sync/syncLog';
 
@@ -85,14 +86,15 @@ export const DEFAULT_SETTINGS: UserSettings = {
   maxArticlesPerFeed: 25,
   maxArticleAgeDays: 30,
   autoRefreshFeedCooldownHours: 1,
-  tvIntervalSeconds: 60,
-  tvTileSize: 'medium',
+  tvIntervalSeconds: 30,
+  tvTileSize: 'xsmall',
   disabledCategories: [],
   tvTransition: 'reveal',
-  tvAnimationSpeed: 'fast',
+  tvAnimationSpeed: 'slow',
   tvQrCodes: false,
   watchlistKeywords: DEFAULT_WATCHLIST_KEYWORDS,
   watchlistDefaultsVersion: WATCHLIST_DEFAULTS_VERSION,
+  defaultsVersion: SETTINGS_DEFAULTS_VERSION,
   dataSource: 'snapshot',
   watchlistNotifications: false,
   stackKeywords: [],
@@ -105,8 +107,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   watchedCves: [],
   newspaperSections: DEFAULT_NEWSPAPER_SECTIONS,
   bookmarkFolders: DEFAULT_BOOKMARK_FOLDERS,
-  clusteringEnabled: true,
-  sectionsEnabled: true,
+  clusteringEnabled: false,
+  sectionsEnabled: false,
   alertRules: createBuiltInRules(false, new Date()),
   alertGapHours: 1,
 };
@@ -134,7 +136,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ? 'corsfix' 
           : (rawProxy || 'corsfix');
 
-        const migrated: UserSettings = {
+        const cleaned: UserSettings = {
           ...DEFAULT_SETTINGS,
           ...saved,
           fontFamily: saved.fontFamily || 'serif',
@@ -153,6 +155,7 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             ? upgradeWatchlistKeywords(saved.watchlistKeywords, saved.watchlistDefaultsVersion ?? 1)
             : DEFAULT_WATCHLIST_KEYWORDS,
           watchlistDefaultsVersion: WATCHLIST_DEFAULTS_VERSION,
+          defaultsVersion: SETTINGS_DEFAULTS_VERSION,
           newspaperSections: Array.isArray(saved.newspaperSections) && saved.newspaperSections.length > 0 ? saved.newspaperSections : DEFAULT_NEWSPAPER_SECTIONS,
           bookmarkFolders: Array.isArray(saved.bookmarkFolders) && saved.bookmarkFolders.length > 0 ? saved.bookmarkFolders : DEFAULT_BOOKMARK_FOLDERS,
           clusteringEnabled: typeof saved.clusteringEnabled === 'boolean' ? saved.clusteringEnabled : true,
@@ -165,6 +168,9 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           alertGapHours: (ALERT_GAP_OPTIONS as readonly number[]).includes(saved.alertGapHours as number) ? saved.alertGapHours : 1,
           syncLog: cleanSyncLog(saved.syncLog),
         };
+        // Changed defaults move only settings still at the old default; a missing version (old install, backup) counts as 0
+        const savedDefaultsVersion = typeof saved.defaultsVersion === 'number' ? saved.defaultsVersion : 0;
+        const migrated = migrateDefaults(cleaned, savedDefaultsVersion);
         delete (migrated as unknown as Record<string, unknown>).tvIntervalMinutes;
         setSettings(migrated);
         saveSettingsToDB(migrated);

@@ -19,6 +19,9 @@ describe('watchlist', () => {
     expect(upgraded).toContain('MyVendor');
     expect(upgraded).toContain('zero-day');
     expect(upgraded).not.toContain('Fortinet'); // legacy default the user removed
+    // Version 3 only trims the defaults, so a v2 list gets nothing added
+    expect(upgradeWatchlistKeywords(['MyVendor'], 2)).toEqual(['MyVendor']);
+    expect(DEFAULT_WATCHLIST_KEYWORDS).toHaveLength(21);
     expect(upgradeWatchlistKeywords(DEFAULT_WATCHLIST_KEYWORDS, 99)).toBe(DEFAULT_WATCHLIST_KEYWORDS);
   });
 });

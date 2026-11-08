@@ -182,8 +182,8 @@ export const MyFeedPage: React.FC<{ onOpenArticle: (article: Article) => void }>
 
       {rows.length === 0 ? (
         <EmptyState
-          message="Nothing matched yet"
-          subtext="Matches from your alert rules show up here. Add or tune rules in Settings → Alert Rules."
+          message="Nothing here yet"
+          subtext={<>Turn on a rule in <a href={buildHash('settings', 'alert-rules')} className="text-theme-accent hover:underline">Settings → Alert Rules</a>. Matches show up here.</>}
         />
       ) : newsLayout !== 'list' ? (
         // The layout views bring their own page padding; cancel ours so the widths line up

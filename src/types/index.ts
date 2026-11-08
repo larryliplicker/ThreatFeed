@@ -443,6 +443,8 @@ export interface UserSettings {
   tvAnimationSpeed: TvAnimationSpeed; // TV mode and dashboards: how fast transitions and chart animations play (fast = the original speed)
   autoRefreshFeedCooldownHours: number; // default: 4 (hours: 0, 2, 4, 6, 12, 24)
   watchlistKeywords: string[];
+  /** Version of the changed-defaults migrations applied to these settings (settingsMigrations.ts); missing means 0 */
+  defaultsVersion: number;
   watchlistDefaultsVersion?: number; // which default keyword set the user has received
   dataSource: 'snapshot' | 'live'; // snapshot: load the server-built snapshot, live-fetch only feeds it doesn't cover
   /** @deprecated read once by migrateAlertRules */

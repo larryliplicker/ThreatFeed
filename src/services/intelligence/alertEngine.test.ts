@@ -9,6 +9,9 @@ import { AlertRule, Article, ConditionGroup, KevEntry, NewsCondition, VulnCondit
 import { article } from '../../test/fixtures';
 import { createBuiltInRules, duplicateRule, migrateAlertRules } from './alertRules';
 
+// Built-ins start disabled except npm-packages; these tests exercise them enabled
+const allOn = (rules: ReturnType<typeof createBuiltInRules>) => rules.map(r => ({ ...r, enabled: true }));
+
 const NOW = new Date('2026-10-30T12:00:00Z');
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -108,7 +111,7 @@ describe('runAlertCheck', () => {
   });
 
   it('adding a My Stack term records its existing matches silently', () => {
-    const stack = createBuiltInRules(false, NOW).find(r => r.builtIn === 'stack-vulns')!;
+    const stack = allOn(createBuiltInRules(false, NOW)).find(r => r.builtIn === 'stack-vulns')!;
     const stackOn = { ...stack, notify: true };
     const { store } = runAlertCheck(input({ rules: [stackOn] }, { stackKeywords: ['Cisco'] }), emptyAlertStore(NOW));
     expect(Object.keys(store.rules['stack-vulns'].handled)).toEqual(['CVE-2026-1000']);
@@ -127,7 +130,7 @@ describe('runAlertCheck', () => {
   });
 
   it('a new term alongside a genuinely new item for an old term still notifies the new item', () => {
-    const stackOn = { ...createBuiltInRules(false, NOW).find(r => r.builtIn === 'stack-vulns')!, notify: true };
+    const stackOn = { ...allOn(createBuiltInRules(false, NOW)).find(r => r.builtIn === 'stack-vulns')!, notify: true };
     const { store } = runAlertCheck(input({ rules: [stackOn] }, { stackKeywords: ['Cisco'] }), emptyAlertStore(NOW));
     const asa = kev('CVE-2026-4000', 'Cisco', 'ASA');
     const next = runAlertCheck(
@@ -162,7 +165,7 @@ describe('runAlertCheck', () => {
   });
 
   it('vulns not loaded leaves the watch store untouched', () => {
-    const watched = createBuiltInRules(true, NOW).find(r => r.builtIn === 'watched-cves')!;
+    const watched = allOn(createBuiltInRules(true, NOW)).find(r => r.builtIn === 'watched-cves')!;
     const store: AlertStore = { ...emptyAlertStore(NOW), watch: { 'CVE-2026-9999': { kev: false, articleIds: [] } } };
     const first = runAlertCheck(input({ rules: [watched] }, { watchedCves: ['CVE-2026-9999'] }), store);
     const skipped = runAlertCheck(
@@ -174,7 +177,7 @@ describe('runAlertCheck', () => {
   });
 
   describe('watched CVEs', () => {
-    const watched = createBuiltInRules(true, NOW).find(r => r.builtIn === 'watched-cves')!;
+    const watched = allOn(createBuiltInRules(true, NOW)).find(r => r.builtIn === 'watched-cves')!;
     const CVE = 'CVE-2026-5000';
     const settings = { watchedCves: [CVE] };
     const start = (): AlertStore => {
@@ -419,7 +422,7 @@ describe('feedMatches', () => {
   });
 
   it('lists recorded watched-CVE events for currently watched CVEs', () => {
-    const watched = createBuiltInRules(true, NOW).find(r => r.builtIn === 'watched-cves')!;
+    const watched = allOn(createBuiltInRules(true, NOW)).find(r => r.builtIn === 'watched-cves')!;
     const CVE = 'CVE-2026-5000';
     const base = { ...emptyAlertStore(NOW), watch: { [CVE]: { kev: false, articleIds: [] } } };
     const listed = vulnData([kev(CVE, 'Acme', 'Router')]);
@@ -433,7 +436,7 @@ describe('feedMatches', () => {
 });
 
 describe('npm packages', () => {
-  const npmRule = createBuiltInRules(false, NOW).find(r => r.builtIn === 'npm-packages')!;
+  const npmRule = allOn(createBuiltInRules(false, NOW)).find(r => r.builtIn === 'npm-packages')!;
   const PROTO: NpmIndexEntry = ['GHSA-p6mc-m468-83gw', 'high', [['lodash', '< 4.17.19', '4.17.19']]];
   const CMD: NpmIndexEntry = ['GHSA-35jh-r3h4-6jhm', 'high', [['lodash', '< 4.17.21', '4.17.21']]];
   const NEW: NpmIndexEntry = ['GHSA-xxxx-yyyy-zzzz', 'critical', [['lodash', '< 4.18.0', '4.18.0']]];

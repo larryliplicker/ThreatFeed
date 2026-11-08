@@ -174,7 +174,10 @@ describe('built-in rules', () => {
     expect(on.map(r => [r.id, r.notify])).toEqual([
       ['watchlist', true], ['stack-news', false], ['stack-vulns', false], ['watched-cves', true], ['npm-packages', true],
     ]);
-    expect(on.every(r => r.enabled)).toBe(true);
+    // The rules the old toggle switched on (and npm) are enabled; the other two start off
+    expect(on.map(r => [r.id, r.enabled])).toEqual([
+      ['watchlist', true], ['stack-news', false], ['stack-vulns', false], ['watched-cves', true], ['npm-packages', true],
+    ]);
     // My npm packages notifies regardless of the old toggle
     expect(migrateAlertRules({ watchlistNotifications: false }, now).filter(r => r.notify).map(r => r.id)).toEqual(['npm-packages']);
   });
@@ -188,6 +191,16 @@ describe('built-in rules', () => {
     expect(out).toHaveLength(6);
     expect(out).toContainEqual(custom);
     expect(out.filter(r => r.builtIn)).toHaveLength(5);
+  });
+
+  it('new installs start with only npm-packages enabled', () => {
+    const enabled = createBuiltInRules(false, now).filter(r => r.enabled).map(r => r.builtIn);
+    expect(enabled).toEqual(['npm-packages']);
+  });
+
+  it('keeps a disabled built-in disabled through cleaning', () => {
+    const out = migrateAlertRules({ alertRules: createBuiltInRules(false, now) }, now);
+    expect(out.filter(r => r.enabled).map(r => r.builtIn)).toEqual(['npm-packages']);
   });
 
   it('resolves built-in roots from the live lists', () => {
@@ -281,7 +294,7 @@ describe('matchedVulnCves', () => {
   });
 
   it('reads built-ins through their live lists', () => {
-    const builtIns = createBuiltInRules(false, now);
+    const builtIns = createBuiltInRules(false, now).map(r => ({ ...r, enabled: true }));
     const acme = [vuln({ cve: 'CVE-9', vendor: 'Acme' })];
     expect([...matchedVulnCves(builtIns, lists, acme, now)]).toEqual(['CVE-9']);
   });
@@ -314,7 +327,7 @@ describe('alertSettingsFrom', () => {
 
 describe('rulesNeedVulns', () => {
   const now = new Date('2026-10-30T12:00:00Z');
-  const builtIns = createBuiltInRules(false, now);
+  const builtIns = createBuiltInRules(false, now).map(r => ({ ...r, enabled: true }));
   const empty = { watchlistKeywords: ['x'], stackKeywords: [], watchedCves: [] };
 
   it('ignores built-in Vulns rules whose live list is empty', () => {

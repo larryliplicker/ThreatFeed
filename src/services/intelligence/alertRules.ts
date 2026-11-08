@@ -182,6 +182,8 @@ type RuleLists = Pick<UserSettings, 'watchlistKeywords' | 'stackKeywords' | 'wat
  * The built-in rules; their conditions are derived live from the settings lists, so `root` is stored empty.
  * "My npm packages" matches the watched packages against the npm advisories (not a condition tree) and
  * notifies from the start: it only ever alerts on advisories published after a package was added.
+ * It is the only one enabled from the start; the others (lists the user fills) are switched on in Settings
+ * so My Feed starts empty.
  */
 export function createBuiltInRules(watchlistNotifications: boolean, now: Date): AlertRule[] {
   const stamp = now.toISOString();
@@ -189,7 +191,7 @@ export function createBuiltInRules(watchlistNotifications: boolean, now: Date): 
     id: builtIn,
     name: BUILT_IN_NAMES[builtIn],
     kind: BUILT_IN_KIND[builtIn],
-    enabled: true,
+    enabled: builtIn === 'npm-packages',
     notify: builtIn === 'npm-packages' || (watchlistNotifications && (builtIn === 'watchlist' || builtIn === 'watched-cves')),
     root: { op: 'any', items: [] },
     builtIn,
@@ -369,7 +371,10 @@ export function cleanRuleList(rules: unknown): AlertRule[] {
 /** Keeps valid saved rules (dropping malformed ones) and re-adds any missing built-in; first run seeds the built-ins from the old toggle */
 export function migrateAlertRules(saved: Partial<UserSettings>, now: Date): AlertRule[] {
   const builtIns = createBuiltInRules(saved.watchlistNotifications ?? false, now);
-  if (!Array.isArray(saved.alertRules)) return builtIns;
+  if (!Array.isArray(saved.alertRules)) {
+    // The old toggle meant "alert me on the watchlist", so the rules it switches on keep running
+    return saved.watchlistNotifications ? builtIns.map(r => (r.notify ? { ...r, enabled: true } : r)) : builtIns;
+  }
   const kept = cleanRuleList(saved.alertRules);
   const have = new Set(kept.map(r => r.builtIn).filter(Boolean));
   return [...kept, ...builtIns.filter(r => !have.has(r.builtIn))];

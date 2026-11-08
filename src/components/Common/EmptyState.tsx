@@ -5,7 +5,7 @@ import { useFeeds } from '../../context/FeedContext';
 
 interface EmptyStateProps {
   message?: string;
-  subtext?: string;
+  subtext?: React.ReactNode;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({ message, subtext }) => {
