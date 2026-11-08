@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { PublicAttack } from '../../types';
-import { countryFlag, countryName, groupDisplayName } from '../../utils/countries';
+import { CountryCode } from '../../components/Common/CountryCode';
+import { countryName, groupDisplayName } from '../../utils/countries';
 import { buildHash } from '../../hooks/useHashRoute';
 import { usePagedCount } from '../../hooks/usePagedCount';
 import { LoadMoreButton } from '../../components/Common/LoadMoreButton';
@@ -43,7 +44,7 @@ export const PublicReportsTab: React.FC<{ attacks: PublicAttack[] }> = ({ attack
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => setClaimedOnly(!claimedOnly)} className={chipClass(claimedOnly)}>Claimed by a group</button>
-        {country && <button onClick={() => setCountry('')} className={chipClass(true)}>{countryFlag(country)} {countryName(country)} ×</button>}
+        {country && <button onClick={() => setCountry('')} className={chipClass(true)}><CountryCode code={country} /> {countryName(country)} ×</button>}
         <label className="flex items-center gap-1.5 bg-theme-card border border-theme-border rounded px-2 py-1.5 text-xs">
           <Search className="w-3.5 h-3.5 text-theme-text-muted" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Organisation, group…" className="bg-transparent font-mono text-theme-text focus:outline-none w-40" />
@@ -77,7 +78,7 @@ export const PublicReportsTab: React.FC<{ attacks: PublicAttack[] }> = ({ attack
         <aside className="space-y-6">
           <div>
             <SectionTitle>Countries</SectionTitle>
-            <BarList color="bg-sky-500/70" rows={countries.slice(0, 10).map(([c, n]) => ({ key: c, label: `${countryFlag(c)} ${countryName(c)}`, value: n, active: country === c, onClick: () => setCountry(country === c ? '' : c) }))} />
+            <BarList color="bg-sky-500/70" rows={countries.slice(0, 10).map(([c, n]) => ({ key: c, label: <><CountryCode code={c} /> {countryName(c)}</>, value: n, active: country === c, onClick: () => setCountry(country === c ? '' : c) }))} />
           </div>
           <div>
             <SectionTitle>Claimed by</SectionTitle>
@@ -90,7 +91,7 @@ export const PublicReportsTab: React.FC<{ attacks: PublicAttack[] }> = ({ attack
             <li key={a.id} className="py-3 space-y-1">
               <div className="flex flex-wrap items-baseline gap-2">
                 <span className="font-serif font-bold text-sm text-theme-text">{a.victim}</span>
-                {a.country && <span className="text-xs" title={countryName(a.country)}>{countryFlag(a.country)}</span>}
+                {a.country && <CountryCode code={a.country} />}
                 {a.group && (
                   <a href={buildHash('ransomware', '', new URLSearchParams({ group: a.group.toLowerCase() }))} className="px-1 rounded bg-rose-600 text-white text-[9px] font-bold uppercase hover:underline">
                     {groupDisplayName(a.group)}

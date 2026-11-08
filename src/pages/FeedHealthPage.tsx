@@ -576,7 +576,7 @@ export const FeedHealthPage: React.FC<FeedHealthPageProps> = ({ onOpenSettings }
                   <div>
                     {ping ? (
                       <span className={`flex items-center gap-1 font-bold ${ping.alive ? 'text-emerald-500' : 'text-rose-500'}`}>
-                        {ping.alive ? `⚡ ${ping.latencyMs}ms` : 'Offline / Hang'}
+                        {ping.alive ? <><Zap className="w-3.5 h-3.5" aria-hidden="true" /> {ping.latencyMs}ms</> : 'Offline / Hang'}
                       </span>
                     ) : (
                       <span className="text-theme-text-muted/60">—</span>
@@ -1121,8 +1121,8 @@ export const FeedHealthPage: React.FC<FeedHealthPageProps> = ({ onOpenSettings }
                         )}
                         Probe Result: {probeResult.gateway} ({probeResult.status || 'No Response'})
                       </span>
-                      <span className="text-xs font-mono font-bold">
-                        ⚡ {probeResult.latencyMs}ms | {probeResult.articleCount} items parsed
+                      <span className="text-xs font-mono font-bold inline-flex items-center gap-1">
+                        <Zap className="w-3.5 h-3.5" aria-hidden="true" /> {probeResult.latencyMs}ms | {probeResult.articleCount} items parsed
                       </span>
                     </div>
 

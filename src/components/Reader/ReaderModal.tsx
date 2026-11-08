@@ -29,7 +29,8 @@ import {
   Folder,
   Copy,
   Terminal,
-  FileText
+  FileText,
+  Target
 } from 'lucide-react';
 
 // A copy/CVE chip followed by small lookup chips (VirusTotal, GreyNoise, ...); in-app links stay in the tab
@@ -404,7 +405,7 @@ export const ReaderModal: React.FC<ReaderModalProps> = ({
           {/* Watchlist Alert Banner */}
           {watchlistMatch.matched && (
             <div className="mb-5 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2 text-xs font-mono text-amber-600 dark:text-amber-300">
-              <span className="font-bold uppercase tracking-wider">🎯 Watchlist Alert:</span>
+              <span className="font-bold uppercase tracking-wider inline-flex items-center gap-1"><Target className="w-3.5 h-3.5" aria-hidden="true" /> Watchlist Alert:</span>
               <span>Matched target keyword(s): <strong>{watchlistMatch.matchedTerms.join(', ')}</strong></span>
             </div>
           )}

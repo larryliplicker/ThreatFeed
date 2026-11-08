@@ -2,7 +2,8 @@ import React, { useMemo } from 'react';
 import { Article, GroupIntel, LeakSiteVictim, RansomwareGroupProfile } from '../../types';
 import { containsTerm } from '../../utils/textMatch';
 import { isLeakSitePost } from '../../services/intelligence/incidents';
-import { countryFlag, countryName, groupDisplayName } from '../../utils/countries';
+import { CountryCode } from '../../components/Common/CountryCode';
+import { countryName, groupDisplayName } from '../../utils/countries';
 import { formatRelativeTime } from '../../utils/date';
 import { BarList, countBy, SectionTitle } from './shared';
 import { GroupIntelSection, LeakSiteStatus } from './GroupIntelSection';
@@ -113,7 +114,7 @@ export const GroupPanel: React.FC<GroupPanelProps> = ({ group, victims, profile,
         </div>
         <div>
           <SectionTitle>Countries</SectionTitle>
-          <BarList rows={countBy(mine, (v) => v.country).slice(0, 6).map(([k, n]) => ({ key: k, label: `${countryFlag(k)} ${countryName(k)}`, value: n }))} />
+          <BarList rows={countBy(mine, (v) => v.country).slice(0, 6).map(([k, n]) => ({ key: k, label: <><CountryCode code={k} /> {countryName(k)}</>, value: n }))} />
         </div>
       </div>
 
@@ -142,7 +143,7 @@ export const GroupPanel: React.FC<GroupPanelProps> = ({ group, victims, profile,
             <li key={v.id} className="py-1.5 flex items-center gap-2">
               <span className="w-16 text-theme-text-muted flex-shrink-0">{formatRelativeTime(v.discoveredAt)}</span>
               <span className="flex-1 truncate text-theme-text">{v.victim}</span>
-              <span title={countryName(v.country)}>{v.country ? countryFlag(v.country) : ''}</span>
+              <CountryCode code={v.country} />
             </li>
           ))}
         </ul>

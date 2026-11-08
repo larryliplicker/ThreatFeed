@@ -15,12 +15,6 @@ export function countryName(code?: string): string {
   return names()?.of(code.toUpperCase()) ?? code.toUpperCase();
 }
 
-/** Flag emoji from two regional-indicator symbols, e.g. "SE" -> 🇸🇪 */
-export function countryFlag(code?: string): string {
-  if (!code || !/^[A-Za-z]{2}$/.test(code)) return '🏳️';
-  return String.fromCodePoint(...code.toUpperCase().split('').map(c => 0x1f1e6 + c.charCodeAt(0) - 65));
-}
-
 /** Reverse lookup ("Sweden" -> "SE"), used for data that only has country names */
 export function countryCodeFromName(name?: string): string | undefined {
   if (!name) return undefined;

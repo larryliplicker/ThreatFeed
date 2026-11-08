@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Bell } from 'lucide-react';
+import { Bell, BellOff } from 'lucide-react';
 import { useSettings } from '../../context/SettingsContext';
 import { useFeeds } from '../../context/FeedContext';
 import { useVulns } from '../../hooks/useVulns';
@@ -151,7 +151,8 @@ export const AlertRulesSettings: React.FC = () => {
                   aria-pressed={rule.notify}
                   title={rule.notify ? 'Desktop notifications on' : 'Desktop notifications off'}
                 >
-                  🔔
+                  {rule.notify ? <Bell className="w-3.5 h-3.5" aria-hidden="true" /> : <BellOff className="w-3.5 h-3.5" aria-hidden="true" />}
+                  <span className="sr-only">Desktop notifications</span>
                 </button>
                 <button className={smallButton} onClick={() => setEditing(isEditing ? null : { rule, isNew: false })}>{rule.builtIn ? 'View' : 'Edit'}</button>
                 {npm ? null : rule.builtIn ? (

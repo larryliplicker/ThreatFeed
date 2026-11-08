@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { LeakSiteVictim, RansomwareIntel } from '../../types';
 import { activityChange, groupActivity } from '../../services/intelligence/groupActivity';
-import { countryFlag, countryName, groupDisplayName } from '../../utils/countries';
+import { CountryCode } from '../../components/Common/CountryCode';
+import { countryName, groupDisplayName } from '../../utils/countries';
 import { formatRelativeTime } from '../../utils/date';
 import { Sparkline } from '../../components/Common/Sparkline';
 import { StatCards } from '../vulns/shared';
@@ -130,7 +131,7 @@ export const GroupsTab: React.FC<{ victims: LeakSiteVictim[]; intel: RansomwareI
                 <td className="py-2 pr-3"><Sparkline values={r.weekly} width={70} height={18} className="text-rose-500" /></td>
                 <td className="py-2 pr-3 hidden md:table-cell text-theme-text-muted">
                   {r.topSector && <span className="block truncate max-w-[10rem]">{r.topSector}</span>}
-                  {r.topCountry && <span className="block">{countryFlag(r.topCountry)} {countryName(r.topCountry)}</span>}
+                  {r.topCountry && <span className="block"><CountryCode code={r.topCountry} /> {countryName(r.topCountry)}</span>}
                 </td>
                 <td className="py-2 pr-3 hidden lg:table-cell text-theme-text-muted whitespace-nowrap">{r.firstSeen ?? '—'}</td>
                 <td className="py-2 pr-3 hidden lg:table-cell"><LeakSiteStatus sites={r.info?.leakSites} /></td>

@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { openPanel, useHashParam } from '../../hooks/useHashRoute';
 import { isPubliclyReported, publicReportIndex } from '../../services/intelligence/enrichment';
 import { LeakSiteVictim, RansomwareIntel } from '../../types';
-import { countryFlag, countryName, groupDisplayName, localCountry, NORDIC_COUNTRIES } from '../../utils/countries';
+import { CountryCode } from '../../components/Common/CountryCode';
+import { countryName, groupDisplayName, localCountry, NORDIC_COUNTRIES } from '../../utils/countries';
 import { formatRelativeTime } from '../../utils/date';
 import { usePagedCount } from '../../hooks/usePagedCount';
 import { LoadMoreButton } from '../../components/Common/LoadMoreButton';
@@ -12,7 +13,7 @@ import { DonutChart } from '../../components/charts/DonutChart';
 import { StackedBars } from '../../components/charts/StackedBars';
 import { sliceTotal } from '../../components/charts/chartData';
 import { groupShare, victimsBySector, victimsPerDayTopGroups } from '../../services/charts/figures';
-import { ExternalLink, Search } from 'lucide-react';
+import { ExternalLink, Globe, Search } from 'lucide-react';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RANGES = [
@@ -123,8 +124,8 @@ export const VictimsTab: React.FC<VictimsTabProps> = ({ victims, structured, int
       <div className="flex flex-wrap items-center gap-2">
         {RANGES.map((r) => <button key={r.days} onClick={() => setDays(r.days)} className={chipClass(days === r.days)}>{r.label}</button>)}
         <span className="mx-1 text-theme-border">|</span>
-        <button onClick={() => setRegion('all')} className={chipClass(region === 'all')}>🌍 All</button>
-        {home && <button onClick={() => setRegion('local')} className={chipClass(region === 'local')}>{countryFlag(home)} {countryName(home)}</button>}
+        <button onClick={() => setRegion('all')} className={chipClass(region === 'all')}><span className="inline-flex items-center gap-1"><Globe className="w-3.5 h-3.5" aria-hidden="true" /> All</span></button>
+        {home && <button onClick={() => setRegion('local')} className={chipClass(region === 'local')}><CountryCode code={home} /> {countryName(home)}</button>}
         <button onClick={() => setRegion('nordic')} className={chipClass(region === 'nordic')}>Nordics</button>
         {reported.size > 0 && (
           <button onClick={() => setReportedOnly(!reportedOnly)} className={chipClass(reportedOnly)} title="Victims also named in press reports or official breach notices">
@@ -194,7 +195,7 @@ export const VictimsTab: React.FC<VictimsTabProps> = ({ victims, structured, int
           </div>
           <div>
             <SectionTitle>Countries</SectionTitle>
-            <BarList color="bg-sky-500/70" rows={countriesInRange.slice(0, 8).map(([c, n]) => ({ key: c, label: `${countryFlag(c)} ${countryName(c)}`, value: n, active: country === c, onClick: () => setCountry(country === c ? '' : c) }))} />
+            <BarList color="bg-sky-500/70" rows={countriesInRange.slice(0, 8).map(([c, n]) => ({ key: c, label: <><CountryCode code={c} /> {countryName(c)}</>, value: n, active: country === c, onClick: () => setCountry(country === c ? '' : c) }))} />
           </div>
           {newGroups.length > 0 && (
             <div>
@@ -253,7 +254,7 @@ export const VictimsTab: React.FC<VictimsTabProps> = ({ victims, structured, int
                     {v.domain && v.domain !== v.victim.toLowerCase() && <span className="block text-[10px] text-theme-text-muted">{v.domain}</span>}
                   </td>
                   <td className="py-2 pr-3 text-theme-text-muted">{v.sector ?? '—'}</td>
-                  <td className="py-2 pr-3 text-theme-text-muted whitespace-nowrap">{v.country ? `${countryFlag(v.country)} ${countryName(v.country)}` : '—'}</td>
+                  <td className="py-2 pr-3 text-theme-text-muted whitespace-nowrap">{v.country ? <><CountryCode code={v.country} /> {countryName(v.country)}</> : '—'}</td>
                 </tr>
               ))}
             </tbody>

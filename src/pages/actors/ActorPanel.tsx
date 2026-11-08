@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { ActorProfile, ActorsData, Article } from '../../types';
 import { Mentions } from '../../services/intelligence/actors';
-import { countryFlag, countryName } from '../../utils/countries';
+import { CountryCode } from '../../components/Common/CountryCode';
+import { countryName } from '../../utils/countries';
 import { SectionTitle } from '../incidents/shared';
 import { EntityText } from '../../components/EntityText';
 import { MentionsSection } from '../../components/charts/MentionsArea';
@@ -34,7 +35,7 @@ export const ActorPanel: React.FC<ActorPanelProps> = ({ actor, data, mentions, w
       subtitle={<>
         <p className="text-xs font-mono text-theme-text-muted mt-1">
           {actor.id}
-          {actor.country && <> · {countryFlag(actor.country)} {countryName(actor.country)}</>}
+          {actor.country && <> · <CountryCode code={actor.country} /> {countryName(actor.country)}</>}
           {actor.firstSeen && <> · active since {actor.firstSeen}</>}
         </p>
         <Aliases aliases={actor.aliases} />

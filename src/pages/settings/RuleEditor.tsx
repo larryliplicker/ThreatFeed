@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Bell, BellOff } from 'lucide-react';
 import { AlertRule, AlertRuleKind, UserSettings } from '../../types';
 import { resolveRoot } from '../../services/intelligence/alertRules';
 import {
@@ -106,7 +107,7 @@ export const RuleEditor: React.FC<RuleEditorProps> = ({ rule, isNew, kindLocked,
           ))}
         </div>
         <button type="button" onClick={toggleNotify} aria-pressed={notify} title={notify ? 'Desktop notifications on' : 'Desktop notifications off'} className={`${buttonClass} ${notify ? '!bg-theme-accent !text-white !border-theme-accent' : ''}`}>
-          🔔 {notify ? 'On' : 'Off'}
+          <span className="inline-flex items-center gap-1">{notify ? <Bell className="w-3.5 h-3.5" aria-hidden="true" /> : <BellOff className="w-3.5 h-3.5" aria-hidden="true" />} {notify ? 'On' : 'Off'}</span>
         </button>
       </div>
 
