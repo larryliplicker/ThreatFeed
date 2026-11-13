@@ -54,30 +54,30 @@ jobs:
         env:
           # Carries ransomware victim history over between runs (the API only returns the latest ~100), and the
           # article text (data/content/<day>.json) of the last 30 days
-          PREVIOUS_SNAPSHOT_URL: https://jozeta.github.io/ThreatFeed/data/snapshot.json
+          PREVIOUS_SNAPSHOT_URL: https://larryliplicker.github.io/ThreatFeed/data/snapshot.json
           # Lets the next run ask NVD only for CVEs changed since this one, instead of ~40 MB every time
-          PREVIOUS_NVD_CACHE_URL: https://jozeta.github.io/ThreatFeed/data/nvd-cache.json
+          PREVIOUS_NVD_CACHE_URL: https://larryliplicker.github.io/ThreatFeed/data/nvd-cache.json
           # Carries older Patch Tuesday months over, so their ~30 MB MSRC documents aren't refetched every run
-          PREVIOUS_MSRC_URL: https://jozeta.github.io/ThreatFeed/data/msrc.json
+          PREVIOUS_MSRC_URL: https://larryliplicker.github.io/ThreatFeed/data/msrc.json
           # Carries actor and malware profiles over between the daily ATT&CK and Malpedia refreshes
-          PREVIOUS_ACTORS_URL: https://jozeta.github.io/ThreatFeed/data/actors.json
+          PREVIOUS_ACTORS_URL: https://larryliplicker.github.io/ThreatFeed/data/actors.json
           # Carry the npm advisories and the last 30 days of npm malware over, so each run asks GitHub only for
           # advisories updated since the last one (a handful of requests). A missing file means a one-time full
           # backfill: about 85 requests for every reviewed npm advisory and 10 to 100 for 30 days of malware (it comes in waves).
           # The other ecosystems (advisories-<pypi|maven|go|nuget|cargo>.json) and popular-packages.json are read from the
           # same published site (PREVIOUS_SNAPSHOT_URL), one ecosystem at a time, capped at 150 pages each
-          PREVIOUS_NPM_URL: https://jozeta.github.io/ThreatFeed/data/npm-advisories.json
-          PREVIOUS_NPM_MALWARE_URL: https://jozeta.github.io/ThreatFeed/data/npm-malware.json
+          PREVIOUS_NPM_URL: https://larryliplicker.github.io/ThreatFeed/data/npm-advisories.json
+          PREVIOUS_NPM_MALWARE_URL: https://larryliplicker.github.io/ThreatFeed/data/npm-malware.json
           # The RSS feeds link to the site and read their published-items ledger (feeds/seen.json) back
-          FEED_SITE_URL: https://jozeta.github.io/ThreatFeed/
+          FEED_SITE_URL: https://larryliplicker.github.io/ThreatFeed/
           # The cached copy of the ledger: used when the published one can't be read, or is older
           PREVIOUS_FEEDS_LEDGER_FILE: .cache/feeds/seen.json
           # The trends history accumulates here: each run recounts the last three days and keeps two years.
           # The script builds on the newer of the two copies and writes nothing if it can read neither
-          PREVIOUS_TRENDS_URL: https://jozeta.github.io/ThreatFeed/data/trends.json
+          PREVIOUS_TRENDS_URL: https://larryliplicker.github.io/ThreatFeed/data/trends.json
           PREVIOUS_TRENDS_FILE: .cache/trends.json
           # The daily-count history for the dashboards (400 days), carried over the same way
-          PREVIOUS_STATS_URL: https://jozeta.github.io/ThreatFeed/data/stats.json
+          PREVIOUS_STATS_URL: https://larryliplicker.github.io/ThreatFeed/data/stats.json
           PREVIOUS_STATS_FILE: .cache/stats.json
           # Optional (repo secret): a free NVD API key allows 10x the request rate. Empty is fine.
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
@@ -94,7 +94,7 @@ jobs:
           mkdir -p public/data
           code=000
           for i in 1 2 3; do
-            code=$(curl -sS -L -o "$f.tmp" -w '%{http_code}' --max-time 60 https://jozeta.github.io/ThreatFeed/data/trends.json) || true
+            code=$(curl -sS -L -o "$f.tmp" -w '%{http_code}' --max-time 60 https://larryliplicker.github.io/ThreatFeed/data/trends.json) || true
             if [ "$code" = 200 ] && valid "$f.tmp"; then mv "$f.tmp" "$f"; echo "Restored the published trends.json"; exit 0; fi
             [ "$code" = 404 ] && break
             sleep 15
@@ -115,7 +115,7 @@ jobs:
           mkdir -p public/data
           code=000
           for i in 1 2 3; do
-            code=$(curl -sS -L -o "$f.tmp" -w '%{http_code}' --max-time 60 https://jozeta.github.io/ThreatFeed/data/stats.json) || true
+            code=$(curl -sS -L -o "$f.tmp" -w '%{http_code}' --max-time 60 https://larryliplicker.github.io/ThreatFeed/data/stats.json) || true
             if [ "$code" = 200 ] && valid "$f.tmp"; then mv "$f.tmp" "$f"; echo "Restored the published stats.json"; exit 0; fi
             [ "$code" = 404 ] && break
             sleep 15
@@ -134,7 +134,7 @@ jobs:
           for name in msrc actors entities npm-advisories npm-malware advisories-pypi advisories-maven advisories-go advisories-nuget advisories-cargo popular-packages; do
             f=public/data/$name.json
             [ -s "$f" ] && continue
-            if curl -sS -fL --retry 3 --retry-delay 15 --max-time 120 -o "$f.tmp" "https://jozeta.github.io/ThreatFeed/data/$name.json" && [ -s "$f.tmp" ]; then
+            if curl -sS -fL --retry 3 --retry-delay 15 --max-time 120 -o "$f.tmp" "https://larryliplicker.github.io/ThreatFeed/data/$name.json" && [ -s "$f.tmp" ]; then
               mv "$f.tmp" "$f"; echo "Restored the published $name.json"
             else
               rm -f "$f.tmp"; echo "::warning::$name.json is missing and the published copy couldn't be fetched"
@@ -153,7 +153,7 @@ jobs:
           kept=0
           for i in $(seq 0 30); do
             day=$(date -u -d "-$i day" +%Y-%m-%d)
-            if curl -sfL --retry 2 --retry-delay 10 --max-time 60 -o "$dir/$day.json.tmp" "https://jozeta.github.io/ThreatFeed/data/content/$day.json" && [ -s "$dir/$day.json.tmp" ]; then
+            if curl -sfL --retry 2 --retry-delay 10 --max-time 60 -o "$dir/$day.json.tmp" "https://larryliplicker.github.io/ThreatFeed/data/content/$day.json" && [ -s "$dir/$day.json.tmp" ]; then
               mv "$dir/$day.json.tmp" "$dir/$day.json"; kept=$((kept + 1))
             else
               rm -f "$dir/$day.json.tmp"
@@ -174,7 +174,7 @@ jobs:
           complete() { for n in $names; do [ -s "$1/$n" ] || return 1; done; valid "$1/seen.json"; }
           complete "$dir" && exit 0
           # npm.xml is optional: restored when present, and a 404 for it alone is not a failure
-          fetch_optional() { c=$(curl -sS -L -o "$1/$optional" -w '%{http_code}' --max-time 120 "https://jozeta.github.io/ThreatFeed/data/feeds/$optional?t=$(date +%s)") || c=000; [ "$c" = 200 ] && [ -s "$1/$optional" ] || rm -f "$1/$optional"; }
+          fetch_optional() { c=$(curl -sS -L -o "$1/$optional" -w '%{http_code}' --max-time 120 "https://larryliplicker.github.io/ThreatFeed/data/feeds/$optional?t=$(date +%s)") || c=000; [ "$c" = 200 ] && [ -s "$1/$optional" ] || rm -f "$1/$optional"; }
           mkdir -p "$dir"
           tmp=$(mktemp -d)
           code=000
@@ -182,7 +182,7 @@ jobs:
             rm -f "$tmp"/*
             fetched=1
             for n in $names; do
-              c=$(curl -sS -L -o "$tmp/$n" -w '%{http_code}' --max-time 120 "https://jozeta.github.io/ThreatFeed/data/feeds/$n?t=$(date +%s)") || c=000
+              c=$(curl -sS -L -o "$tmp/$n" -w '%{http_code}' --max-time 120 "https://larryliplicker.github.io/ThreatFeed/data/feeds/$n?t=$(date +%s)") || c=000
               [ "$n" = seen.json ] && code=$c
               if [ "$c" != 200 ]; then fetched=0; break; fi
             done

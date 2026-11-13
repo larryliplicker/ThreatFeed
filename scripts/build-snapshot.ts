@@ -86,7 +86,7 @@ const advisoryOut = (eco: Ecosystem) => resolve(root, 'public/data', advisoryFil
 const OTHER_ECOSYSTEMS: Ecosystem[] = ['pypi', 'maven', 'go', 'nuget', 'cargo'];
 const CONTENT_DIR = resolve(root, 'public/data/content'); // article text per publish day (content/<YYYY-MM-DD>.json): the reader and bookmarks, on demand
 const FEEDS_DIR = resolve(root, 'public/data/feeds'); // the RSS feeds and their published-items ledger (seen.json), read by feed readers and the next run
-const FEED_SITE_URL = (process.env.FEED_SITE_URL || 'https://jozeta.github.io/ThreatFeed/').replace(/\/?$/, '/');
+const FEED_SITE_URL = (process.env.FEED_SITE_URL || 'https://larryliplicker.github.io/ThreatFeed/').replace(/\/?$/, '/');
 const CWE_NAMES: Record<string, string> = JSON.parse(readFileSync(resolve(root, 'scripts/data/cwe-names.json'), 'utf8')).names;
 // The published site's copies of this run's outputs, read back to carry history over (set in the workflow)
 const PREVIOUS_BASE = process.env.PREVIOUS_SNAPSHOT_URL?.replace(/snapshot\.json$/, '');
@@ -99,7 +99,7 @@ const report = (status: DataSourceStatus) => {
   if (status.status !== 'ok') console.warn(`  ${status.label}: ${status.status}${status.detail ? ` (${status.detail})` : ''}`);
 };
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err)).slice(0, 200);
-const USER_AGENT = 'ThreatFeed snapshot bot (+https://github.com/jozeta/ThreatFeed)';
+const USER_AGENT = 'ThreatFeed snapshot bot (+https://github.com/larryliplicker/ThreatFeed)';
 const MAX_ARTICLES_PER_FEED = 25;
 const MAX_AGE_DAYS = 30;
 const MAX_CONTENT_CHARS = 10000; // keeps the content shards small; the reader links to the original for the rest
