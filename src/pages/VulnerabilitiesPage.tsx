@@ -9,6 +9,7 @@ import { openPanel, useHashParam, useHashRoute } from '../hooks/useHashRoute';
 import { formatRelativeTime } from '../utils/date';
 import { KevTab } from './vulns/KevTab';
 import { NewCvesTab } from './vulns/NewCvesTab';
+import { StackReportTab } from './vulns/StackReportTab';
 import { ExploitTab } from './vulns/ExploitTab';
 import { OpenSourceTab } from './vulns/OpenSourceTab';
 import { VulnNewsTab } from './vulns/VulnNewsTab';
@@ -20,9 +21,9 @@ import { canShowTab, ecoFromParam, ecosToLoad } from '../services/npm/npmFilters
 import { useNpmMatches } from '../hooks/useNpmMatches';
 import { useNpmUnseen } from '../hooks/useNpmUnseen';
 import { articlesByCve } from './vulns/shared';
-import { ShieldAlert, Flame, FilePlus2, Gauge, Package, Newspaper, Star, CalendarCheck, Boxes } from 'lucide-react';
+import { ShieldAlert, Flame, FilePlus2, Gauge, Package, Newspaper, Star, CalendarCheck, Boxes, Layers } from 'lucide-react';
 
-const TABS = ['kev', 'new', 'patch', 'epss', 'oss', 'npm', 'news', 'watching'] as const;
+const TABS = ['kev', 'new', 'stack', 'patch', 'epss', 'oss', 'npm', 'news', 'watching'] as const;
 type Tab = (typeof TABS)[number];
 
 /** Loads data/msrc.json only once the Patch Tuesday tab is opened */
@@ -76,6 +77,7 @@ export const VulnerabilitiesPage: React.FC<{ onOpenArticle: (article: Article) =
   const tabs: { id: Tab; label: string; icon: React.ReactNode; count?: number; fresh?: number }[] = [
     { id: 'kev', label: 'Known exploited (KEV)', icon: <Flame className="w-4 h-4" />, count: kev.length },
     { id: 'new', label: 'New CVEs', icon: <FilePlus2 className="w-4 h-4" />, count: vulns?.nvd?.total },
+    { id: 'stack', label: 'Stack report', icon: <Layers className="w-4 h-4" /> },
     { id: 'patch', label: 'Patch Tuesday', icon: <CalendarCheck className="w-4 h-4" /> },
     { id: 'epss', label: 'Exploit prediction', icon: <Gauge className="w-4 h-4" /> },
     { id: 'oss', label: 'Open source', icon: <Package className="w-4 h-4" />, count: vulns?.advisories.length },
@@ -123,6 +125,7 @@ export const VulnerabilitiesPage: React.FC<{ onOpenArticle: (article: Article) =
 
       {tab === 'kev' && (vulns?.kev.length ? <KevTab kev={kev} hiddenVendorCount={hiddenVendorCount} news={news} exploits={vulns.exploits ?? {}} cweNames={vulns.cweNames ?? {}} stackKeywords={settings.stackKeywords} onOpenCve={openCve} /> : noData('The CISA KEV catalog'))}
       {tab === 'new' && (vulns?.nvd ? <NewCvesTab stats={vulns.nvd} notable={vulns.notable} kevIds={kevIds} news={news} exploits={vulns.exploits ?? {}} cweNames={vulns.cweNames ?? {}} onOpenCve={openCve} /> : noData('NVD data'))}
+      {tab === 'stack' && (vulns ? <StackReportTab vulns={vulns} stackKeywords={settings.stackKeywords} onOpenCve={openCve} /> : noData('CVE data'))}
       {tab === 'patch' && <PatchTuesdayView stackKeywords={settings.stackKeywords} onOpenCve={openCve} noData={noData('Patch Tuesday data')} />}
       {tab === 'epss' && (vulns?.epssTop.length ? <ExploitTab epssTop={vulns.epssTop} kev={vulns.kev} kevVisible={kev} exploits={vulns.exploits ?? {}} news={news} onOpenCve={openCve} /> : noData('EPSS data'))}
       {tab === 'oss' && (vulns?.advisories.length ? <OpenSourceTab advisories={vulns.advisories} onOpenCve={openCve} /> : noData('GitHub advisory data'))}
